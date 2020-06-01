@@ -10,6 +10,8 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 ##Computer Info Page
 ![info page](https://github.com/Eddddddddy/E-ink-esp32-arduino-weather-time-note/blob/master/image/infopage.JPG)
 
+支持TTGO T5 V2.2 和 TTGO T5 V2.3两个型号的开发板，其他型号未适配。
+
 前期准备：
 
 1.准备和风天气api接口（https://dev.heweather.com/）
