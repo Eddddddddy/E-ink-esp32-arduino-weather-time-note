@@ -14,7 +14,7 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 
 前期准备：
 
-1.准备和风天气api接口（https://dev.heweather.com/）
+1.准备和风天气api接口（https://dev.heweather.com/ ）
 
 
 
@@ -24,9 +24,9 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 
 2.在Windows服务器上配置好MQTT服务端
 
-3.安装酷Q程序，建议参照其他教程（https://www.bilibili.com/video/BV13E4113777/）
+3.安装酷Q程序，建议参照其他教程（https://www.bilibili.com/video/BV13E4113777/ ）
 
-4.在酷Q中安装好http api插件（https://cqp.cc/t/30748）
+4.在酷Q中安装好http api插件（https://cqp.cc/t/30748 ）
 
 5.更改本项目中server的python程序
 
@@ -38,7 +38,7 @@ Arduino：
 
 1.安装arduino
 
-2.安装esp32开发板（https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json）
+2.安装esp32开发板（https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json ）
 
 3.安装arduino库
 - [Button2](https://github.com/lewisxhe/Button2)<fork branch>
