@@ -24,7 +24,7 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 
 2.在Windows服务器上配置好MQTT服务端
 
-3.安装酷Q程序，建议参照其他教程（https://www.bilibili.com/video/BV13E4113777/ ）
+3.安装酷Q程序，建议参照其他教程（https://www.bilibili.com/video/BV13E4113777/ ）IMPORTANT! 酷Q貌似凉了，还没寻找合适的QQ消息解析服务，请把侧重放到HTTP API
 
 4.在酷Q中安装好http api插件（https://cqp.cc/t/30748 ）
 
@@ -52,7 +52,7 @@ Arduino：
 - [PubSubClient](https://github.com/knolleary/pubsubclient)
 - [Adafruit_Sensor](https://github.com/adafruit/Adafruit_Sensor)
 - [Adafruit_BME680](https://github.com/adafruit/Adafruit_BME680)
-  
+
 4.安装arduino工具（Use Arduino ESP32 Sketch data Upload files,if you not install,[download ESP32FS-vX.zip](https://github.com/me-no-dev/arduino-esp32fs-plugin/releases),Extract to <C:\Users\Your User Name\Documents\Arduino\tools>,Open Ardunio IDE,  Tools -> ESP32 Sketch data Upload -> Upload）
 
 5.使用第四步中安装的工具给开发板上传文件系统
