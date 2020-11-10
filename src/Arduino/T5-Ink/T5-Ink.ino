@@ -157,8 +157,8 @@ Button2 *pBtns = nullptr;
 uint8_t g_btns[] = BUTTONS_MAP;
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600 * 7;
-const int   daylightOffset_sec = 3600;
+const long  gmtOffset_sec = 3600 * 8;
+const int   daylightOffset_sec = 0;
 
 hw_timer_t * timer = NULL;
 hw_timer_t * timer2 = NULL;
