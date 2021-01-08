@@ -1,7 +1,7 @@
 # E-ink-esp32-arduino-weather-time-note
 You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-inside\QQ-note\computer-info on this device.
 
-Video Introduction(https://www.bilibili.com/video/BV1pt4y1y7ya)
+[Video Introduction](https://www.bilibili.com/video/BV1pt4y1y7ya)
 
 ![image](image/image.png)
 
@@ -29,9 +29,9 @@ Video Introduction(https://www.bilibili.com/video/BV1pt4y1y7ya)
 
 2.在Windows服务器上配置好MQTT服务端
 
-3.安装酷Q程序，建议参照其他教程（https://www.bilibili.com/video/BV13E4113777/ ）IMPORTANT! 酷Q貌似凉了，还没寻找合适的QQ消息解析服务，请把侧重放到HTTP API
+3.安装酷Q程序，建议参照[其他教程](https://www.bilibili.com/video/BV13E4113777/)IMPORTANT! 酷Q貌似凉了，还没寻找合适的QQ消息解析服务，请把侧重放到HTTP API
 
-4.在酷Q中安装好http api插件（https://cqp.cc/t/30748 ）
+4.在酷Q中安装好http api[插件](https://cqp.cc/t/30748)
 
 5.更改本项目中server的python程序
 
@@ -66,11 +66,11 @@ Arduino：
 
 
 
-视频介绍(https://www.bilibili.com/video/BV1pt4y1y7ya)
+[视频介绍](https://www.bilibili.com/video/BV1pt4y1y7ya)
 
 
 
-ENGLISH:
+## ENGLISH:
 
 支持TTGO T5 V2.2 和 TTGO T5 V2.3两个型号的开发板，其他型号未适配。
 
@@ -86,7 +86,7 @@ BEFORE：
 
 2.config MQTT server on your vps.
 
-3.install CQT（https://www.bilibili.com/video/BV13E4113777/ ）IMPORTANT! CQT is not working any more. please use HTTP API.
+3.install [CQT](https://www.bilibili.com/video/BV13E4113777/)IMPORTANT! CQT is not working any more. please use HTTP API.
 
 4.install CQhttp plugin（https://cqp.cc/t/30748 ）
 
