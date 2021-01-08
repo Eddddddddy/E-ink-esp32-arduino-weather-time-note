@@ -15,6 +15,12 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 
 ![info page](image/infopage.JPG)
 
+  
+
+   
+
+  
+
 # ENGLISH:
 
 支持TTGO T5 V2.2 和 TTGO T5 V2.3两个型号的开发板，其他型号未适配。
@@ -63,6 +69,10 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 6.upload your sketch to esp32（Compilation speed is very slow, on my laptop, i need 2min 55sec.）
 
 video introduction(https://www.bilibili.com/video/BV1pt4y1y7ya)
+
+  
+
+  
 
 # CHINESE:
 
