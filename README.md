@@ -17,13 +17,13 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 
 支持TTGO T5 V2.2 和 TTGO T5 V2.3两个型号的开发板，其他型号未适配。
 
-前期准备：
+## 前期准备：
 
 1.准备和风天气api接口（https://dev.heweather.com/ ）
 
 
 
-服务器：
+## 服务器：
 
 1.准备服务器，Windows服务器。
 
@@ -39,7 +39,7 @@ You can get time\weather\temperature-inside\humility-inside\pressure-inside\IAQ-
 
 
 
-Arduino：
+## Arduino：
 
 1.安装arduino
 
@@ -70,17 +70,17 @@ Arduino：
 
 
 
-## ENGLISH:
+# ENGLISH:
 
 支持TTGO T5 V2.2 和 TTGO T5 V2.3两个型号的开发板，其他型号未适配。
 
-BEFORE：
+## BEFORE：
 
 1.prepare the online weather API（https://dev.heweather.com/ ）
 
 
 
-服务器：
+## server：
 
 1.prepare a vps, suck as Windows server.
 
@@ -96,7 +96,7 @@ BEFORE：
 
 
 
-Arduino：
+## Arduino：
 
 1.install Arduino IDE.
 
