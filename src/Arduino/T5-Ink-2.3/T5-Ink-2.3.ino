@@ -27,11 +27,12 @@
 // #define DEFALUT_FONT FreeSerifItalic9pt7b
 
 const GFXfont *fonts[] = {
-    &FreeSansBoldOblique18pt7b,
-    &FreeSerifBold9pt7b,//2 ////
+  &FreeSansBoldOblique18pt7b,
+  &FreeSerifBold9pt7b,//2 ////
 };
 
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
@@ -53,31 +54,23 @@ const GFXfont *fonts[] = {
 #include <esp_pm.h>
 #include <esp_wifi_types.h>
 #include "esp32-hal-cpu.h"
+#include "config.h"
 
 #define FILESYSTEM SPIFFS
 
-//#define USE_AP_MODE
-//#define WEBSERVER
-//#define SDCARD_ENABLE
-#define BME_ENABLE
+
 
 /*100 * 100 bmp fromat*/
 //https://www.onlineconverter.com/jpg-to-bmp
 #define BADGE_CONFIG_FILE_NAME "/badge.data"
 #define DEFALUT_AVATAR_BMP "/avatar.bmp"
 #define DEFALUT_QR_CODE_BMP "/qr.bmp"
-#define WIFI_SSID "xxxx"
-#define WIFI_PASSWORD "xxxx"
-#define MQTT_SERVER "xxxx"
 #define CHANNEL_0 0
 #define IP5306_ADDR 0X75
 #define IP5306_REG_SYS_CTL0 0x00
 #define SEALEVELPRESSURE_HPA (1002.2)
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  27000        /* Time ESP32 will go to sleep (in seconds) */
-#define SLEEPTIME_h 23
-#define SLEEPTIME_m 30
-#define BME680_FLASHTIME 20
+
 
 RTC_DATA_ATTR int bootCount = 0;
 
@@ -87,55 +80,57 @@ void displayInit(void);
 void mqtt_callback(char* topic, byte* payload, unsigned int length);
 
 typedef struct {
-    char name[32];
-    char link[64];
-    char tel[64];
-    char company[64];
-    char email[64];
-    char address[128];
+  char name[32];
+  char link[64];
+  char tel[64];
+  char company[64];
+  char email[64];
+  char address[128];
 } Badge_Info_t;
 
 typedef struct {
-    char code_1[8];
-    char code_2[8];
-    char wea_1[64];
-    char wea_2[64];
-    char tmp_1_min[8];
-    char tmp_1_max[8];
-    char tmp_2_min[8];
-    char tmp_2_max[8];
+  char code_1[8];
+  char code_2[8];
+  char wea_1[64];
+  char wea_2[64];
+  char tmp_1_min[8];
+  char tmp_1_max[8];
+  char tmp_2_min[8];
+  char tmp_2_max[8];
 } Weather_struct;
 
 typedef struct {
-    char notice_1[64];
-    char notice_2[64];
-    char notice_3[64];
-    char notice_4[64];
-    char notice_5[64];
-    char notice_6[64];
+  char notice_1[64];
+  char notice_2[64];
+  char notice_3[64];
+  char notice_4[64];
+  char notice_5[64];
+  char notice_6[64];
 } Notice_struct;
 
 typedef struct {
-    char cpu[8];
-    char gpu[8];
+  char cpu[8];
+  char gpu[8];
 } Msi_info_struct;
 
 typedef enum {
-    RIGHT_ALIGNMENT = 0,
-    LEFT_ALIGNMENT,
-    CENTER_ALIGNMENT,
+  RIGHT_ALIGNMENT = 0,
+  LEFT_ALIGNMENT,
+  CENTER_ALIGNMENT,
 } Text_alignment;
 
 typedef struct {
-    int humidity;
-    int pressure;
-    int temperature;
-    int iaq;
+  int humidity;
+  int pressure;
+  int temperature;
+  int iaq;
 } bme680_struct;
 
 AsyncWebServer server(80);
 WiFiClient wifiClient;
-PubSubClient client(MQTT_SERVER,1883,mqtt_callback,wifiClient);
+PubSubClient client(MQTT_SERVER, MQTT_PORT, mqtt_callback, wifiClient);
+
+WiFiMulti wifiMulti;
 
 GxIO_Class io(SPI, ELINK_SS, ELINK_DC, ELINK_RESET);
 GxEPD_Class display(io, ELINK_RESET, ELINK_BUSY);
@@ -159,7 +154,7 @@ Button2 *pBtns = nullptr;
 uint8_t g_btns[] = BUTTONS_MAP;
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600*8;
+const long  gmtOffset_sec = TIMEZONE * 3600;
 const int   daylightOffset_sec = 0;
 
 hw_timer_t * timer = NULL;
@@ -172,19 +167,19 @@ int   bme680_errTime = 0;
 
 static int page_state = 1;
 
-int timer_1 = 1,timer_2_weather = 1,timer_2_battery=1, timer_2_bme680=1;
-int msi_info_state=0;
-int weather_first=0;
+int timer_1 = 1, timer_2_weather = 1, timer_2_battery = 1, timer_2_bme680 = 1;
+int msi_info_state = 0;
+int weather_first = 0;
 
 #define ADC_PIN         35
 int vref = 1100;
-int adc_data=0;
-int Battary_level=0;
+int adc_data = 0;
+int Battary_level = 0;
 
 
 void button_handle(uint8_t gpio)
 {
-    switch (gpio) {
+  switch (gpio) {
 
 #if BUTTON_3
     case BUTTON_3: {
@@ -192,520 +187,527 @@ void button_handle(uint8_t gpio)
         page_state = ((page_state + 1) > 2) ? 1 : page_state + 1;
         Serial.printf("Show Num: %d page\n", page_state);
 
-        if(page_state==2){
-            //client.publish("msi_info_call", "on");
-            //msi_info_state=1;
-        }else if(page_state==1){
-            //client.publish("msi_info_call", "off");
-            //msi_info_state=0;
+        if (page_state == 2) {
+          //client.publish("msi_info_call", "on");
+          //msi_info_state=1;
+        } else if (page_state == 1) {
+          //client.publish("msi_info_call", "off");
+          //msi_info_state=0;
 
-//            display.fillRect(99, 0, 150, 122, GxEPD_BLACK);
-//            display.updateWindow(99, 0, 150, 122, true);
-//            display.fillRect(99, 0, 150, 122, GxEPD_WHITE);
-//            display.updateWindow(99, 0, 150, 122, true);
-            
-//            display.fillRect(101, 0, 170, 127, GxEPD_BLACK);
-//            display.updateWindow(101, 0, 170, 127, true);
+          //            display.fillRect(99, 0, 150, 122, GxEPD_BLACK);
+          //            display.updateWindow(99, 0, 150, 122, true);
+          //            display.fillRect(99, 0, 150, 122, GxEPD_WHITE);
+          //            display.updateWindow(99, 0, 150, 122, true);
+
+          //            display.fillRect(101, 0, 170, 127, GxEPD_BLACK);
+          //            display.updateWindow(101, 0, 170, 127, true);
         }
         switch_page(page_state);
         //display.powerDown();
-    }
-    break;
+      }
+      break;
 #endif
     default:
-        break;
-    }
+      break;
+  }
 }
 
 void button_callback(Button2 &b)
 {
-    for (int i = 0; i < sizeof(g_btns) / sizeof(g_btns[0]); ++i) {
-        if (pBtns[i] == b) {
-            Serial.printf("btn: %u press\n", pBtns[i].getAttachPin());
-            button_handle(pBtns[i].getAttachPin());
-        }
+  for (int i = 0; i < sizeof(g_btns) / sizeof(g_btns[0]); ++i) {
+    if (pBtns[i] == b) {
+      Serial.printf("btn: %u press\n", pBtns[i].getAttachPin());
+      button_handle(pBtns[i].getAttachPin());
     }
+  }
 }
 
 void button_init()
 {
-    uint8_t args = sizeof(g_btns) / sizeof(g_btns[0]);
-    pBtns = new Button2[args];
-    for (int i = 0; i < args; ++i) {
-        pBtns[i] = Button2(g_btns[i]);
-        pBtns[i].setPressedHandler(button_callback);
-    }
+  uint8_t args = sizeof(g_btns) / sizeof(g_btns[0]);
+  pBtns = new Button2[args];
+  for (int i = 0; i < args; ++i) {
+    pBtns[i] = Button2(g_btns[i]);
+    pBtns[i].setPressedHandler(button_callback);
+  }
 }
 
 void button_loop()
 {
-    for (int i = 0; i < sizeof(g_btns) / sizeof(g_btns[0]); ++i) {
-        pBtns[i].loop();
-    }
+  for (int i = 0; i < sizeof(g_btns) / sizeof(g_btns[0]); ++i) {
+    pBtns[i].loop();
+  }
 }
 
 void displayText(const String &str, int16_t y, uint8_t alignment)
 {
-    int16_t x = 0;
-    int16_t x1, y1;
-    uint16_t w, h;
-    display.setCursor(x, y);
-    display.getTextBounds(str, x, y, &x1, &y1, &w, &h);
+  int16_t x = 0;
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.setCursor(x, y);
+  display.getTextBounds(str, x, y, &x1, &y1, &w, &h);
 
-    switch (alignment) {
+  switch (alignment) {
     case RIGHT_ALIGNMENT:
-        display.setCursor(display.width() - w - x1, y);
-        break;
+      display.setCursor(display.width() - w - x1, y);
+      break;
     case LEFT_ALIGNMENT:
-        display.setCursor(0, y);
-        break;
+      display.setCursor(0, y);
+      break;
     case CENTER_ALIGNMENT:
-        display.setCursor(display.width() / 2 - ((w + x1) / 2), y);
-        break;
+      display.setCursor(display.width() / 2 - ((w + x1) / 2), y);
+      break;
     default:
-        break;
-    }
-    display.println(str);
+      break;
+  }
+  display.println(str);
 }
 
 void saveBadgeInfo(Notice_struct *notice)
 {
-    // Open file for writing
-    File file = FILESYSTEM.open(BADGE_CONFIG_FILE_NAME, FILE_WRITE);
-    if (!file) {
-        Serial.println(F("Failed to create file"));
-        return;
-    }
+  // Open file for writing
+  File file = FILESYSTEM.open(BADGE_CONFIG_FILE_NAME, FILE_WRITE);
+  if (!file) {
+    Serial.println(F("Failed to create file"));
+    return;
+  }
 #if ARDUINOJSON_VERSION_MAJOR == 5
-    StaticJsonBuffer<256> jsonBuffer;
-    JsonObject &root = jsonBuffer.createObject();
+  StaticJsonBuffer<256> jsonBuffer;
+  JsonObject &root = jsonBuffer.createObject();
 #elif ARDUINOJSON_VERSION_MAJOR == 6
-    StaticJsonDocument<256> root;
+  StaticJsonDocument<256> root;
 #endif
-    // Set the values
-    root["notice_1"] = notice->notice_1;
-    root["notice_2"] = notice->notice_2;
-    root["notice_3"] = notice->notice_3;
-    root["notice_4"] = notice->notice_4;
-    root["notice_5"] = notice->notice_5;
-    root["notice_6"] = notice->notice_6;
+  // Set the values
+  root["notice_1"] = notice->notice_1;
+  root["notice_2"] = notice->notice_2;
+  root["notice_3"] = notice->notice_3;
+  root["notice_4"] = notice->notice_4;
+  root["notice_5"] = notice->notice_5;
+  root["notice_6"] = notice->notice_6;
 
 #if ARDUINOJSON_VERSION_MAJOR == 5
-    if (root.printTo(file) == 0)
+  if (root.printTo(file) == 0)
 #elif ARDUINOJSON_VERSION_MAJOR == 6
-    if (serializeJson(root, file) == 0)
+  if (serializeJson(root, file) == 0)
 #endif
-    {
-        Serial.println(F("Failed to write to file"));
-    }
-    // Close the file (File's destructor doesn't close the file)
-    file.close();
+  {
+    Serial.println(F("Failed to write to file"));
+  }
+  // Close the file (File's destructor doesn't close the file)
+  file.close();
 }
 
 void loadDefaultInfo(void)
 {
-    strlcpy(notice_str.notice_1, "无消息", sizeof(notice_str.notice_1));
-    strlcpy(notice_str.notice_2, "无消息", sizeof(notice_str.notice_2));
-    strlcpy(notice_str.notice_3, "无消息", sizeof(notice_str.notice_3));
-    strlcpy(notice_str.notice_4, "无消息", sizeof(notice_str.notice_4));
-    strlcpy(notice_str.notice_5, "无消息", sizeof(notice_str.notice_5));
-    strlcpy(notice_str.notice_6, "无消息", sizeof(notice_str.notice_6));
-//    strlcpy(info.name, "Lilygo", sizeof(info.name));
-//    strlcpy(info.address, "ShenZhen", sizeof(info.address));
-//    strlcpy(info.email, "lily@lilygo.cc", sizeof(info.email));
-//    strlcpy(info.link, "http://www.lilygo.cn", sizeof(info.link));
-//    strlcpy(info.tel, "0755-83380665", sizeof(info.tel));
-    saveBadgeInfo(&notice_str);
+  strlcpy(notice_str.notice_1, "哎呀", sizeof(notice_str.notice_1));
+  strlcpy(notice_str.notice_2, "我刚刚", sizeof(notice_str.notice_2));
+  strlcpy(notice_str.notice_3, "怎么不记得了", sizeof(notice_str.notice_3));
+  strlcpy(notice_str.notice_4, "失忆辽", sizeof(notice_str.notice_4));
+  strlcpy(notice_str.notice_5, "快提醒我一下", sizeof(notice_str.notice_5));
+  strlcpy(notice_str.notice_6, "无消息", sizeof(notice_str.notice_6));
+  //    strlcpy(info.name, "Lilygo", sizeof(info.name));
+  //    strlcpy(info.address, "ShenZhen", sizeof(info.address));
+  //    strlcpy(info.email, "lily@lilygo.cc", sizeof(info.email));
+  //    strlcpy(info.link, "http://www.lilygo.cn", sizeof(info.link));
+  //    strlcpy(info.tel, "0755-83380665", sizeof(info.tel));
+  saveBadgeInfo(&notice_str);
 }
 
 bool loadBadgeInfo(Notice_struct *notice)
 {
-    if (!FILESYSTEM.exists(BADGE_CONFIG_FILE_NAME)) {
-        Serial.println("load configure fail");
-        return false;
-    }
+  if (!FILESYSTEM.exists(BADGE_CONFIG_FILE_NAME)) {
+    Serial.println("load configure fail");
+    return false;
+  }
 
-    File file = FILESYSTEM.open(BADGE_CONFIG_FILE_NAME);
-    if (!file) {
-        Serial.println("Open Fial -->");
-        return false;
-    }
+  File file = FILESYSTEM.open(BADGE_CONFIG_FILE_NAME);
+  if (!file) {
+    Serial.println("Open Fial -->");
+    return false;
+  }
 
 #if ARDUINOJSON_VERSION_MAJOR == 5
-    StaticJsonBuffer<256> jsonBuffer;
-    JsonObject &root = jsonBuffer.parseObject(file);
-    if (!root.success()) {
-        Serial.println(F("Failed to read file, using default configuration"));
-        file.close();
-        return false;
-    }
-    root.printTo(Serial);
-#elif ARDUINOJSON_VERSION_MAJOR == 6
-    StaticJsonDocument<256> root;
-    DeserializationError error = deserializeJson(root, file);
-    if (error) {
-        Serial.println(F("Failed to read file, using default configuration"));
-        file.close();
-        return false;
-    }
-#endif
-    if ((const char *)root["notice_6"] == NULL) {
-        return false;
-    }
-
-    strlcpy(notice->notice_1, root["notice_1"], sizeof(notice->notice_1));
-    strlcpy(notice->notice_2, root["notice_2"], sizeof(notice->notice_2));
-    strlcpy(notice->notice_3, root["notice_3"], sizeof(notice->notice_3));
-    strlcpy(notice->notice_4, root["notice_4"], sizeof(notice->notice_4));
-    strlcpy(notice->notice_5, root["notice_5"], sizeof(notice->notice_5));
-    strlcpy(notice->notice_6, root["notice_6"], sizeof(notice->notice_6));
-//    strlcpy(info->name, root["name"], sizeof(info->name));
-//    strlcpy(info->address, root["address"], sizeof(info->address));
-//    strlcpy(info->email, root["email"], sizeof(info->email));
-//    strlcpy(info->link, root["link"], sizeof(info->link));
-//    strlcpy(info->tel, root["tel"], sizeof(info->tel));
+  StaticJsonBuffer<256> jsonBuffer;
+  JsonObject &root = jsonBuffer.parseObject(file);
+  if (!root.success()) {
+    Serial.println(F("Failed to read file, using default configuration"));
     file.close();
-    return true;
+    return false;
+  }
+  root.printTo(Serial);
+#elif ARDUINOJSON_VERSION_MAJOR == 6
+  StaticJsonDocument<256> root;
+  DeserializationError error = deserializeJson(root, file);
+  if (error) {
+    Serial.println(F("Failed to read file, using default configuration"));
+    file.close();
+    return false;
+  }
+#endif
+  if ((const char *)root["notice_6"] == NULL) {
+    return false;
+  }
+
+  strlcpy(notice->notice_1, root["notice_1"], sizeof(notice->notice_1));
+  strlcpy(notice->notice_2, root["notice_2"], sizeof(notice->notice_2));
+  strlcpy(notice->notice_3, root["notice_3"], sizeof(notice->notice_3));
+  strlcpy(notice->notice_4, root["notice_4"], sizeof(notice->notice_4));
+  strlcpy(notice->notice_5, root["notice_5"], sizeof(notice->notice_5));
+  strlcpy(notice->notice_6, root["notice_6"], sizeof(notice->notice_6));
+  //    strlcpy(info->name, root["name"], sizeof(info->name));
+  //    strlcpy(info->address, root["address"], sizeof(info->address));
+  //    strlcpy(info->email, root["email"], sizeof(info->email));
+  //    strlcpy(info->link, root["link"], sizeof(info->link));
+  //    strlcpy(info->tel, root["tel"], sizeof(info->tel));
+  file.close();
+  return true;
 }
 
 void WebServerStart(void)
 {
 
 #ifdef USE_AP_MODE
-    uint8_t mac[6];
-    char apName[18] = {0};
-    IPAddress apIP = IPAddress(192, 168, 1, 1);
+  uint8_t mac[6];
+  char apName[18] = {0};
+  IPAddress apIP = IPAddress(192, 168, 1, 1);
 
-    WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP);
 
-    WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
 
-    esp_wifi_get_mac(WIFI_IF_STA, mac);
+  esp_wifi_get_mac(WIFI_IF_STA, mac);
 
-    sprintf(apName, "TTGO-Badge-%02X:%02X", mac[4], mac[5]);
+  sprintf(apName, "TTGO-Badge-%02X:%02X", mac[4], mac[5]);
 
-    if (!WiFi.softAP(apName)) {
-        Serial.println("AP Config failed.");
-        return;
-    } else {
-        Serial.println("AP Config Success.");
-        Serial.print("AP MAC: ");
-        Serial.println(WiFi.softAPmacAddress());
-    }
+  if (!WiFi.softAP(apName)) {
+    Serial.println("AP Config failed.");
+    return;
+  } else {
+    Serial.println("AP Config Success.");
+    Serial.print("AP MAC: ");
+    Serial.println(WiFi.softAPmacAddress());
+  }
 #else
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+  WiFi.mode(WIFI_STA);
+  //WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
+  wifiMulti.addAP(WIFI_SSID2, WIFI_PASSWORD2);
+  wifiMulti.addAP(WIFI_SSID3, WIFI_PASSWORD3);
+  int tryTime = 0;
+  // while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+  while (wifiMulti.run() != WL_CONNECTED) {
     //while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-        Serial.print(".");
-        esp_restart();
+    delay(500);
+    Serial.print(".");
+    tryTime++;
+    if (tryTime > 10) {
+      esp_restart();
     }
-    Serial.println(F("WiFi connected"));
-    Serial.println("");
-    Serial.println(WiFi.localIP());
+  }
+  Serial.println(F("WiFi connected"));
+  Serial.println("");
+  Serial.println(WiFi.localIP());
 #endif
 
 #ifdef WEBSERVER
-{
+  {
     if (MDNS.begin("ttgo")) {
-        Serial.println("MDNS responder started");
+      Serial.println("MDNS responder started");
     }
 
     server.serveStatic("/", FILESYSTEM, "/").setDefaultFile("index.html");
 
     server.on("css/main.css", HTTP_GET, [](AsyncWebServerRequest * request) {
-        request->send(FILESYSTEM, "css/main.css", "text/css");
+      request->send(FILESYSTEM, "css/main.css", "text/css");
     });
     server.on("js/jquery.min.js", HTTP_GET, [](AsyncWebServerRequest * request) {
-        request->send(FILESYSTEM, "js/jquery.min.js", "application/javascript");
+      request->send(FILESYSTEM, "js/jquery.min.js", "application/javascript");
     });
     server.on("js/tbdValidate.js", HTTP_GET, [](AsyncWebServerRequest * request) {
-        request->send(FILESYSTEM, "js/tbdValidate.js", "application/javascript");
+      request->send(FILESYSTEM, "js/tbdValidate.js", "application/javascript");
     });
     server.on("/data", HTTP_POST, [](AsyncWebServerRequest * request) {
-        request->send(200, "text/plain", "");
+      request->send(200, "text/plain", "");
 
-        for (int i = 0; i < request->params(); i++) {
-            String name = request->getParam(i)->name();
-            String params = request->getParam(i)->value();
-            Serial.println(name + " : " + params);
-            if (name == "company") {
-                strlcpy(info.company, params.c_str(), sizeof(info.company));
-            } else if (name == "name") {
-                strlcpy(info.name, params.c_str(), sizeof(info.name));
-            } else if (name == "address") {
-                strlcpy(info.address, params.c_str(), sizeof(info.address));
-            } else if (name == "email") {
-                strlcpy(info.email, params.c_str(), sizeof(info.email));
-            } else if (name == "link") {
-                strlcpy(info.link, params.c_str(), sizeof(info.link));
-            } else if (name == "tel") {
-                strlcpy(info.tel, params.c_str(), sizeof(info.tel));
-            }
+      for (int i = 0; i < request->params(); i++) {
+        String name = request->getParam(i)->name();
+        String params = request->getParam(i)->value();
+        Serial.println(name + " : " + params);
+        if (name == "company") {
+          strlcpy(info.company, params.c_str(), sizeof(info.company));
+        } else if (name == "name") {
+          strlcpy(info.name, params.c_str(), sizeof(info.name));
+        } else if (name == "address") {
+          strlcpy(info.address, params.c_str(), sizeof(info.address));
+        } else if (name == "email") {
+          strlcpy(info.email, params.c_str(), sizeof(info.email));
+        } else if (name == "link") {
+          strlcpy(info.link, params.c_str(), sizeof(info.link));
+        } else if (name == "tel") {
+          strlcpy(info.tel, params.c_str(), sizeof(info.tel));
         }
-        saveBadgeInfo(&info);
+      }
+      saveBadgeInfo(&info);
     });
 
     server.onFileUpload([](AsyncWebServerRequest * request, const String & filename, size_t index, uint8_t *data, size_t len, bool final) {
-        static File file;
-        static int pathIndex = 0;
-        if (!index) {
-            Serial.printf("UploadStart: %s\n", filename.c_str());
-            file = FILESYSTEM.open(path[pathIndex], FILE_WRITE);
-            if (!file) {
-                Serial.println("Open FAIL");
-                request->send(500, "text/plain", "hander error");
-                return;
-            }
+      static File file;
+      static int pathIndex = 0;
+      if (!index) {
+        Serial.printf("UploadStart: %s\n", filename.c_str());
+        file = FILESYSTEM.open(path[pathIndex], FILE_WRITE);
+        if (!file) {
+          Serial.println("Open FAIL");
+          request->send(500, "text/plain", "hander error");
+          return;
         }
-        if (file.write(data, len) != len) {
-            Serial.println("Write fail");
-            request->send(500, "text/plain", "hander error");
-            file.close();
-            return;
-        }
+      }
+      if (file.write(data, len) != len) {
+        Serial.println("Write fail");
+        request->send(500, "text/plain", "hander error");
+        file.close();
+        return;
+      }
 
-        if (final) {
-            Serial.printf("UploadEnd: %s (%u)\n", filename.c_str(), index + len);
-            file.close();
-            request->send(200, "text/plain", "");
-            if (++pathIndex >= 2) {
-                pathIndex = 0;
-                showMianPage();
-            }
+      if (final) {
+        Serial.printf("UploadEnd: %s (%u)\n", filename.c_str(), index + len);
+        file.close();
+        request->send(200, "text/plain", "");
+        if (++pathIndex >= 2) {
+          pathIndex = 0;
+          showMianPage();
         }
+      }
     });
 
     server.onNotFound([](AsyncWebServerRequest * request) {
-        request->send(404, "text/plain", "Not found");
+      request->send(404, "text/plain", "Not found");
     });
 
     MDNS.addService("http", "tcp", 80);
 
     server.begin();
-}
+  }
 #endif
 }
 
 void first_weather() {
-  int low_l,low_h,high_l,high_h;
-  low_l = abs(atoi(wea_str.tmp_1_min)%10);
-  low_h = abs(atoi(wea_str.tmp_1_min)/10);
-  high_l = abs(atoi(wea_str.tmp_1_max)%10);
-  high_h = abs(atoi(wea_str.tmp_1_max)/10);
+  int low_l, low_h, high_l, high_h;
+  low_l = abs(atoi(wea_str.tmp_1_min) % 10);
+  low_h = abs(atoi(wea_str.tmp_1_min) / 10);
+  high_l = abs(atoi(wea_str.tmp_1_max) % 10);
+  high_h = abs(atoi(wea_str.tmp_1_max) / 10);
 
-  display.fillRect(0, 65-7, 100, 31, GxEPD_BLACK);
+  display.fillRect(0, 65 - 7, 100, 31, GxEPD_BLACK);
 
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
-    u8g2_for_adafruit_gfx.setFontDirection(0);
-    u8g2_for_adafruit_gfx.setFontMode(1);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
+  u8g2_for_adafruit_gfx.setFontDirection(0);
+  u8g2_for_adafruit_gfx.setFontMode(1);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
 
-  display.drawBitmap(3, 68-7, weather_icon[atoi(wea_str.code_1)], 25, 25,GxEPD_WHITE); //weather_icon
+  display.drawBitmap(3, 68 - 7, weather_icon[atoi(wea_str.code_1)], 25, 25, GxEPD_WHITE); //weather_icon
   //display.drawBitmap(33, 68, weather_text[num_code], 24, 12,GxEPD_WHITE);//天气
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.setCursor(33, 80-7);
-    u8g2_for_adafruit_gfx.print(wea_str.wea_1);
-  if(atoi(wea_str.tmp_1_min)>0){
-    display.drawBitmap(30, 80-7, num[low_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+8, 80-7, num[low_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+16, 80-7, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_1_min)<-9){
-    display.drawBitmap(30, 80-7, num[11], 8, 16,GxEPD_WHITE);//-
-    display.drawBitmap(30+8, 80-7, num[low_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+16, 80-7, num[low_l], 8, 16,GxEPD_WHITE);//个位
-  }else if(atoi(wea_str.tmp_1_min)<0){
-    display.drawBitmap(30, 80-7, num[11], 8, 16,GxEPD_WHITE);//-
-    display.drawBitmap(30+8, 80-7, num[low_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+16, 80-7, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_1_min)==0){
-    display.drawBitmap(30+8, 80-7, num[0], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+16, 80-7, num[10], 8, 16,GxEPD_WHITE);//℃
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.setCursor(33, 80 - 7);
+  u8g2_for_adafruit_gfx.print(wea_str.wea_1);
+  if (atoi(wea_str.tmp_1_min) > 0) {
+    display.drawBitmap(30, 80 - 7, num[low_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 8, 80 - 7, num[low_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 16, 80 - 7, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_1_min) < -9) {
+    display.drawBitmap(30, 80 - 7, num[11], 8, 16, GxEPD_WHITE); //-
+    display.drawBitmap(30 + 8, 80 - 7, num[low_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 16, 80 - 7, num[low_l], 8, 16, GxEPD_WHITE); //个位
+  } else if (atoi(wea_str.tmp_1_min) < 0) {
+    display.drawBitmap(30, 80 - 7, num[11], 8, 16, GxEPD_WHITE); //-
+    display.drawBitmap(30 + 8, 80 - 7, num[low_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 16, 80 - 7, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_1_min) == 0) {
+    display.drawBitmap(30 + 8, 80 - 7, num[0], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 16, 80 - 7, num[10], 8, 16, GxEPD_WHITE); //℃
   }
 
-  display.drawBitmap(30+24, 80-7, num_, 16, 16,GxEPD_WHITE);//--
+  display.drawBitmap(30 + 24, 80 - 7, num_, 16, 16, GxEPD_WHITE); //--
 
-  if(atoi(wea_str.tmp_1_max)>0){
-    display.drawBitmap(30+40, 80-7, num[high_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+48, 80-7, num[high_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+56, 80-7, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_1_max)<-9){
-    display.drawBitmap(30+40, 80-7, num[11], 8, 16,GxEPD_WHITE);//--
-    display.drawBitmap(30+48, 80-7, num[high_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+56, 80-7, num[high_l], 8, 16,GxEPD_WHITE);//个位
-  }else if(atoi(wea_str.tmp_1_max)<0){
-    display.drawBitmap(30+40, 80-7, num[11], 8, 16,GxEPD_WHITE);//-
-    display.drawBitmap(30+48, 80-7, num[high_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+56, 80-7, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_1_max)==0){
-    display.drawBitmap(30+48, 80-7, num[0], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+56, 80-7, num[10], 8, 16,GxEPD_WHITE);//℃
+  if (atoi(wea_str.tmp_1_max) > 0) {
+    display.drawBitmap(30 + 40, 80 - 7, num[high_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 48, 80 - 7, num[high_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 56, 80 - 7, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_1_max) < -9) {
+    display.drawBitmap(30 + 40, 80 - 7, num[11], 8, 16, GxEPD_WHITE); //--
+    display.drawBitmap(30 + 48, 80 - 7, num[high_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 56, 80 - 7, num[high_l], 8, 16, GxEPD_WHITE); //个位
+  } else if (atoi(wea_str.tmp_1_max) < 0) {
+    display.drawBitmap(30 + 40, 80 - 7, num[11], 8, 16, GxEPD_WHITE); //-
+    display.drawBitmap(30 + 48, 80 - 7, num[high_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 56, 80 - 7, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_1_max) == 0) {
+    display.drawBitmap(30 + 48, 80 - 7, num[0], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 56, 80 - 7, num[10], 8, 16, GxEPD_WHITE); //℃
   }
 
 
-  display.updateWindow(0, 65-7, 100, 31, true);
+  display.updateWindow(0, 65 - 7, 100, 31, true);
 }
 
 void second_weather() {
-  int low_l,low_h,high_l,high_h;
-  low_l = abs(atoi(wea_str.tmp_2_min)%10);
-  low_h = abs(atoi(wea_str.tmp_2_min)/10);
-  high_l = abs(atoi(wea_str.tmp_2_max)%10);
-  high_h = abs(atoi(wea_str.tmp_2_max)/10);
+  int low_l, low_h, high_l, high_h;
+  low_l = abs(atoi(wea_str.tmp_2_min) % 10);
+  low_h = abs(atoi(wea_str.tmp_2_min) / 10);
+  high_l = abs(atoi(wea_str.tmp_2_max) % 10);
+  high_h = abs(atoi(wea_str.tmp_2_max) / 10);
 
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
-    u8g2_for_adafruit_gfx.setFontDirection(0);
-    u8g2_for_adafruit_gfx.setFontMode(1);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
+  u8g2_for_adafruit_gfx.setFontDirection(0);
+  u8g2_for_adafruit_gfx.setFontMode(1);
 
-  display.fillRect(0, 98-6, 100, 30, GxEPD_BLACK);
-  display.drawBitmap(3, 68+32-6, weather_icon[atoi(wea_str.code_2)], 25, 25,GxEPD_WHITE); //weather_icon
+  display.fillRect(0, 98 - 6, 100, 30, GxEPD_BLACK);
+  display.drawBitmap(3, 68 + 32 - 6, weather_icon[atoi(wea_str.code_2)], 25, 25, GxEPD_WHITE); //weather_icon
   //display.drawBitmap(33, 68+32, weather_text[num_code], 24, 12,GxEPD_WHITE);//天气
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.setCursor(33, 80+32-6);
-    u8g2_for_adafruit_gfx.print(wea_str.wea_2);
-  if(atoi(wea_str.tmp_2_min)>0){
-    display.drawBitmap(30, 80+32-6, num[low_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+8, 80+32-6, num[low_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+16, 80+32-6, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_2_min)<-9){
-    display.drawBitmap(30, 80+32-6, num[11], 8, 16,GxEPD_WHITE);//-
-    display.drawBitmap(30+8, 80+32-6, num[low_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+16, 80+32-6, num[low_l], 8, 16,GxEPD_WHITE);//个位
-  }else if(atoi(wea_str.tmp_2_min)<0){
-    display.drawBitmap(30, 80+32-6, num[11], 8, 16,GxEPD_WHITE);//-
-    display.drawBitmap(30+8, 80+32-6, num[low_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+16, 80+32-6, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_2_min)==0){
-    display.drawBitmap(30+8, 80+32-6, num[0], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+16, 80+32-6, num[10], 8, 16,GxEPD_WHITE);//℃
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.setCursor(33, 80 + 32 - 6);
+  u8g2_for_adafruit_gfx.print(wea_str.wea_2);
+  if (atoi(wea_str.tmp_2_min) > 0) {
+    display.drawBitmap(30, 80 + 32 - 6, num[low_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 8, 80 + 32 - 6, num[low_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 16, 80 + 32 - 6, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_2_min) < -9) {
+    display.drawBitmap(30, 80 + 32 - 6, num[11], 8, 16, GxEPD_WHITE); //-
+    display.drawBitmap(30 + 8, 80 + 32 - 6, num[low_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 16, 80 + 32 - 6, num[low_l], 8, 16, GxEPD_WHITE); //个位
+  } else if (atoi(wea_str.tmp_2_min) < 0) {
+    display.drawBitmap(30, 80 + 32 - 6, num[11], 8, 16, GxEPD_WHITE); //-
+    display.drawBitmap(30 + 8, 80 + 32 - 6, num[low_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 16, 80 + 32 - 6, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_2_min) == 0) {
+    display.drawBitmap(30 + 8, 80 + 32 - 6, num[0], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 16, 80 + 32 - 6, num[10], 8, 16, GxEPD_WHITE); //℃
   }
 
-  display.drawBitmap(30+24, 80+32-6, num_, 16, 16,GxEPD_WHITE);//--
+  display.drawBitmap(30 + 24, 80 + 32 - 6, num_, 16, 16, GxEPD_WHITE); //--
 
-  if(atoi(wea_str.tmp_2_max)>0){
-    display.drawBitmap(30+40, 80+32-6, num[high_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+48, 80+32-6, num[high_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+56, 80+32-6, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_2_max)<-9){
-    display.drawBitmap(30+40, 80+32-6, num[11], 8, 16,GxEPD_WHITE);//--
-    display.drawBitmap(30+48, 80+32-6, num[high_h], 8, 16,GxEPD_WHITE);//十位
-    display.drawBitmap(30+56, 80+32-6, num[high_l], 8, 16,GxEPD_WHITE);//个位
-  }else if(atoi(wea_str.tmp_2_max)<0){
-    display.drawBitmap(30+40, 80+32-6, num[11], 8, 16,GxEPD_WHITE);//-
-    display.drawBitmap(30+48, 80+32-6, num[high_l], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+56, 80+32-6, num[10], 8, 16,GxEPD_WHITE);//℃
-  }else if(atoi(wea_str.tmp_2_max)==0){
-    display.drawBitmap(30+48, 80+32-6, num[0], 8, 16,GxEPD_WHITE);//个位
-    display.drawBitmap(30+56, 80+32-6, num[10], 8, 16,GxEPD_WHITE);//℃
+  if (atoi(wea_str.tmp_2_max) > 0) {
+    display.drawBitmap(30 + 40, 80 + 32 - 6, num[high_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 48, 80 + 32 - 6, num[high_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 56, 80 + 32 - 6, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_2_max) < -9) {
+    display.drawBitmap(30 + 40, 80 + 32 - 6, num[11], 8, 16, GxEPD_WHITE); //--
+    display.drawBitmap(30 + 48, 80 + 32 - 6, num[high_h], 8, 16, GxEPD_WHITE); //十位
+    display.drawBitmap(30 + 56, 80 + 32 - 6, num[high_l], 8, 16, GxEPD_WHITE); //个位
+  } else if (atoi(wea_str.tmp_2_max) < 0) {
+    display.drawBitmap(30 + 40, 80 + 32 - 6, num[11], 8, 16, GxEPD_WHITE); //-
+    display.drawBitmap(30 + 48, 80 + 32 - 6, num[high_l], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 56, 80 + 32 - 6, num[10], 8, 16, GxEPD_WHITE); //℃
+  } else if (atoi(wea_str.tmp_2_max) == 0) {
+    display.drawBitmap(30 + 48, 80 + 32 - 6, num[0], 8, 16, GxEPD_WHITE); //个位
+    display.drawBitmap(30 + 56, 80 + 32 - 6, num[10], 8, 16, GxEPD_WHITE); //℃
   }
 
 
-  display.updateWindow(0, 98-6, 100, 29, true);
-  display.updateWindow(0, 98-6, 100, 29, true);
+  display.updateWindow(0, 98 - 6, 100, 29, true);
+  display.updateWindow(0, 98 - 6, 100, 29, true);
   //delay(1000);
   //display.powerDown();
 }
 
 void switch_page (int page) {
   switch (page) {
-    case 1:{
-//      display.fillRect(271, 0, 26, 42, GxEPD_WHITE);
-//      display.drawBitmap(272, 10, home_icon, 23, 23,GxEPD_BLACK);
-//      display.fillRect(271, 44, 26, 42, GxEPD_BLACK);
-//      display.drawBitmap(273, 54, txt_icon, 23, 23,GxEPD_WHITE);
-//      display.fillRect(271, 88, 26, 44, GxEPD_BLACK);
-//      display.drawBitmap(272, 97, inf_icon, 23, 23,GxEPD_WHITE);
-      firstPage();
-    }break;
-    case 2:{
-//      display.fillRect(271, 0, 26, 42, GxEPD_BLACK);
-//      display.drawBitmap(272, 10, home_icon, 23, 23,GxEPD_WHITE);
-//      display.fillRect(271, 44, 26, 42, GxEPD_WHITE);
-//      display.drawBitmap(273, 54, txt_icon, 23, 23,GxEPD_BLACK);
-//      display.fillRect(271, 88, 26, 44, GxEPD_BLACK);
-//      display.drawBitmap(272, 97, inf_icon, 23, 23,GxEPD_WHITE);
-      secondPage();
-    }break;
-    case 3:{
-//      display.fillRect(271, 0, 26, 42, GxEPD_BLACK);
-//      display.drawBitmap(272, 10, home_icon, 23, 23,GxEPD_WHITE);
-//      display.fillRect(271, 44, 26, 42, GxEPD_BLACK);
-//      display.drawBitmap(273, 54, txt_icon, 23, 23,GxEPD_WHITE);
-//      display.fillRect(271, 88, 26, 44, GxEPD_WHITE);
-//      display.drawBitmap(272, 97, inf_icon, 23, 23,GxEPD_BLACK);
-      //thirdPage();
-    }break;
+    case 1: {
+        //      display.fillRect(271, 0, 26, 42, GxEPD_WHITE);
+        //      display.drawBitmap(272, 10, home_icon, 23, 23,GxEPD_BLACK);
+        //      display.fillRect(271, 44, 26, 42, GxEPD_BLACK);
+        //      display.drawBitmap(273, 54, txt_icon, 23, 23,GxEPD_WHITE);
+        //      display.fillRect(271, 88, 26, 44, GxEPD_BLACK);
+        //      display.drawBitmap(272, 97, inf_icon, 23, 23,GxEPD_WHITE);
+        firstPage();
+      } break;
+    case 2: {
+        //      display.fillRect(271, 0, 26, 42, GxEPD_BLACK);
+        //      display.drawBitmap(272, 10, home_icon, 23, 23,GxEPD_WHITE);
+        //      display.fillRect(271, 44, 26, 42, GxEPD_WHITE);
+        //      display.drawBitmap(273, 54, txt_icon, 23, 23,GxEPD_BLACK);
+        //      display.fillRect(271, 88, 26, 44, GxEPD_BLACK);
+        //      display.drawBitmap(272, 97, inf_icon, 23, 23,GxEPD_WHITE);
+        secondPage();
+      } break;
+    case 3: {
+        //      display.fillRect(271, 0, 26, 42, GxEPD_BLACK);
+        //      display.drawBitmap(272, 10, home_icon, 23, 23,GxEPD_WHITE);
+        //      display.fillRect(271, 44, 26, 42, GxEPD_BLACK);
+        //      display.drawBitmap(273, 54, txt_icon, 23, 23,GxEPD_WHITE);
+        //      display.fillRect(271, 88, 26, 44, GxEPD_WHITE);
+        //      display.drawBitmap(272, 97, inf_icon, 23, 23,GxEPD_BLACK);
+        //thirdPage();
+      } break;
   }
   //display.fillScreen(GxEPD_BLACK);
-    //display.updateWindow(271, 0, 26, 127, true);
-    // display.updateWindow(101, 0, 196, 127, true);
+  //display.updateWindow(271, 0, 26, 127, true);
+  // display.updateWindow(101, 0, 196, 127, true);
 }
 
-void LCD_one(int num,int loc){
-  uint16_t show_1,show_2,show_3,show_4,show_5,show_6,show_7;
+void LCD_one(int num, int loc) {
+  uint16_t show_1, show_2, show_3, show_4, show_5, show_6, show_7;
   int x;
   switch (loc) {
-    case 1:x=0-9;break;
-    case 2:x=34-9;break;
-    case 3:x=77-9;break;
-    case 4:x=111-9;break;
+    case 1: x = 0 - 9; break;
+    case 2: x = 34 - 9; break;
+    case 3: x = 77 - 9; break;
+    case 4: x = 111 - 9; break;
   }
-  if(num==4||num==5||num==6||num==8||num==9||num==0)show_1=GxEPD_BLACK;else show_1=GxEPD_WHITE;
-  if(num==2||num==6||num==8||num==0)show_2=GxEPD_BLACK;else show_2=GxEPD_WHITE;
-  if(num==1||num==2||num==3||num==4||num==7||num==8||num==9||num==0)show_3=GxEPD_BLACK;else show_3=GxEPD_WHITE;
-  if(num==1||num==3||num==4||num==5||num==6||num==7||num==8||num==9||num==0)show_4=GxEPD_BLACK;else show_4=GxEPD_WHITE;
-  if(num==2||num==3||num==5||num==6||num==7||num==8||num==9||num==0)show_5=GxEPD_BLACK;else show_5=GxEPD_WHITE;
-  if(num==2||num==3||num==4||num==5||num==6||num==8||num==9)show_6=GxEPD_BLACK;else show_6=GxEPD_WHITE;
-  if(num==2||num==3||num==5||num==6||num==8||num==9||num==0)show_7=GxEPD_BLACK;else show_7=GxEPD_WHITE;
-  display.drawBitmap(115+x,20, LCD_l, 5, 24,show_1);//数码管
-  display.drawBitmap(115+x,47, LCD_l, 5, 24,show_2);//数码管
-  display.drawBitmap(140+x,20, LCD_l, 5, 24,show_3);//数码管
-  display.drawBitmap(140+x,47, LCD_l, 5, 24,show_4);//数码管
-  display.drawBitmap(119+x,16, LCD_h, 22, 5,show_5);//数码管
-  display.drawBitmap(119+x,43, LCD_h, 22, 5,show_6);//数码管
-  display.drawBitmap(119+x,70, LCD_h, 22, 5,show_7);//数码管
+  if (num == 4 || num == 5 || num == 6 || num == 8 || num == 9 || num == 0)show_1 = GxEPD_BLACK; else show_1 = GxEPD_WHITE;
+  if (num == 2 || num == 6 || num == 8 || num == 0)show_2 = GxEPD_BLACK; else show_2 = GxEPD_WHITE;
+  if (num == 1 || num == 2 || num == 3 || num == 4 || num == 7 || num == 8 || num == 9 || num == 0)show_3 = GxEPD_BLACK; else show_3 = GxEPD_WHITE;
+  if (num == 1 || num == 3 || num == 4 || num == 5 || num == 6 || num == 7 || num == 8 || num == 9 || num == 0)show_4 = GxEPD_BLACK; else show_4 = GxEPD_WHITE;
+  if (num == 2 || num == 3 || num == 5 || num == 6 || num == 7 || num == 8 || num == 9 || num == 0)show_5 = GxEPD_BLACK; else show_5 = GxEPD_WHITE;
+  if (num == 2 || num == 3 || num == 4 || num == 5 || num == 6 || num == 8 || num == 9)show_6 = GxEPD_BLACK; else show_6 = GxEPD_WHITE;
+  if (num == 2 || num == 3 || num == 5 || num == 6 || num == 8 || num == 9 || num == 0)show_7 = GxEPD_BLACK; else show_7 = GxEPD_WHITE;
+  display.drawBitmap(115 + x, 20, LCD_l, 5, 24, show_1); //数码管
+  display.drawBitmap(115 + x, 47, LCD_l, 5, 24, show_2); //数码管
+  display.drawBitmap(140 + x, 20, LCD_l, 5, 24, show_3); //数码管
+  display.drawBitmap(140 + x, 47, LCD_l, 5, 24, show_4); //数码管
+  display.drawBitmap(119 + x, 16, LCD_h, 22, 5, show_5); //数码管
+  display.drawBitmap(119 + x, 43, LCD_h, 22, 5, show_6); //数码管
+  display.drawBitmap(119 + x, 70, LCD_h, 22, 5, show_7); //数码管
 }
 
-void LCD_print(){
+void LCD_print() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
+  if (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     return;
   }
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-  int hour_h,hour_l,min_h,min_l;
-  hour_l = timeinfo.tm_hour%10;
-  hour_h = timeinfo.tm_hour/10;
-  min_l = timeinfo.tm_min%10;
-  min_h = timeinfo.tm_min/10;
-  LCD_one(hour_h,1);
-  LCD_one(hour_l,2);
-  LCD_one(min_h,3);
-  LCD_one(min_l,4);
-  display.drawBitmap(183-9,31, LCD_d, 5, 5,GxEPD_BLACK);//数码管
-  display.drawBitmap(183-9,55, LCD_d, 5, 5,GxEPD_BLACK);//数码管
-  if((int)timeinfo.tm_hour==SLEEPTIME_h&&(int)timeinfo.tm_min==SLEEPTIME_m){
-      esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-      Serial.println("Going to sleep now");
-      Serial.flush();
-      //Wire.end();
-      display.powerDown();
-      esp_deep_sleep_start();
+  int hour_h, hour_l, min_h, min_l;
+  hour_l = timeinfo.tm_hour % 10;
+  hour_h = timeinfo.tm_hour / 10;
+  min_l = timeinfo.tm_min % 10;
+  min_h = timeinfo.tm_min / 10;
+  LCD_one(hour_h, 1);
+  LCD_one(hour_l, 2);
+  LCD_one(min_h, 3);
+  LCD_one(min_l, 4);
+  display.drawBitmap(183 - 9, 31, LCD_d, 5, 5, GxEPD_BLACK); //数码管
+  display.drawBitmap(183 - 9, 55, LCD_d, 5, 5, GxEPD_BLACK); //数码管
+  if ((int)timeinfo.tm_hour == SLEEPTIME_h && (int)timeinfo.tm_min == SLEEPTIME_m) {
+    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    Serial.println("Going to sleep now");
+    Serial.flush();
+    //Wire.end();
+    display.powerDown();
+    esp_deep_sleep_start();
   }
 }
 
-void firstPage(){
+void firstPage() {
   display.fillRect(99, 0, 172, 128, GxEPD_WHITE);
   LCD_print();
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy16_t_gb2312);
-    u8g2_for_adafruit_gfx.setFontDirection(0);
-    u8g2_for_adafruit_gfx.setFontMode(1);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy16_t_gb2312);
+  u8g2_for_adafruit_gfx.setFontDirection(0);
+  u8g2_for_adafruit_gfx.setFontMode(1);
   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
   u8g2_for_adafruit_gfx.setCursor(111, 105);
   u8g2_for_adafruit_gfx.print(notice_str.notice_1);
-    u8g2_for_adafruit_gfx.setCursor(112, 105);
+  u8g2_for_adafruit_gfx.setCursor(112, 105);
   u8g2_for_adafruit_gfx.print(notice_str.notice_1);
 
   display.updateWindow(99, 0, 150, 122, true);//196 127
@@ -714,10 +716,10 @@ void firstPage(){
   //display.updateWindow(101, 0, 170, 127, true);
 }
 
-void secondPage(){
+void secondPage() {
 
 
-  
+
   display.fillRect(99, 0, 172, 128, GxEPD_WHITE);
   display.fillRect(111, 22, 130, 2, GxEPD_BLACK);
   display.fillRect(111, 47, 130, 2, GxEPD_BLACK);
@@ -725,365 +727,365 @@ void secondPage(){
   display.fillRect(111, 98, 130, 2, GxEPD_BLACK);
   //display.fillRect(111, 107, 150, 1, GxEPD_BLACK);
 
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy16_t_gb2312);
-    u8g2_for_adafruit_gfx.setFontDirection(0);
-    u8g2_for_adafruit_gfx.setFontMode(1);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy16_t_gb2312);
+  u8g2_for_adafruit_gfx.setFontDirection(0);
+  u8g2_for_adafruit_gfx.setFontMode(1);
 
   u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-  
+
   u8g2_for_adafruit_gfx.setCursor(111, 18);
   u8g2_for_adafruit_gfx.print(notice_str.notice_1);
   u8g2_for_adafruit_gfx.setCursor(112, 18);
   u8g2_for_adafruit_gfx.print(notice_str.notice_1);
-  
+
   u8g2_for_adafruit_gfx.setCursor(111, 42);
   u8g2_for_adafruit_gfx.print(notice_str.notice_2);
   u8g2_for_adafruit_gfx.setCursor(112, 42);
   u8g2_for_adafruit_gfx.print(notice_str.notice_2);
-  
+
   u8g2_for_adafruit_gfx.setCursor(111, 67);
   u8g2_for_adafruit_gfx.print(notice_str.notice_3);
   u8g2_for_adafruit_gfx.setCursor(112, 67);
   u8g2_for_adafruit_gfx.print(notice_str.notice_3);
-  
+
   u8g2_for_adafruit_gfx.setCursor(111, 92);
   u8g2_for_adafruit_gfx.print(notice_str.notice_4);
   u8g2_for_adafruit_gfx.setCursor(112, 92);
   u8g2_for_adafruit_gfx.print(notice_str.notice_4);
-  
+
   u8g2_for_adafruit_gfx.setCursor(111, 118);
   u8g2_for_adafruit_gfx.print(notice_str.notice_5);
   u8g2_for_adafruit_gfx.setCursor(112, 118);
   u8g2_for_adafruit_gfx.print(notice_str.notice_5);
-  
-//  u8g2_for_adafruit_gfx.setCursor(111, 124);
-//  u8g2_for_adafruit_gfx.print(notice_str.notice_6);
 
-    display.updateWindow(99, 0, 150, 122, true);
-    display.updateWindow(99, 0, 150, 122, true);
+  //  u8g2_for_adafruit_gfx.setCursor(111, 124);
+  //  u8g2_for_adafruit_gfx.print(notice_str.notice_6);
+
+  display.updateWindow(99, 0, 150, 122, true);
+  display.updateWindow(99, 0, 150, 122, true);
   //display.updateWindow(101, 0, 170, 127, true);
 }
 
-void showBattary(){
-    if(Battary_level>33)Battary_level=33;
-    else if(Battary_level<0)Battary_level=0;
-    display.fillRect(4,46-8,39,13,GxEPD_WHITE);
-    display.fillRect(43, 49-8, 3, 8, GxEPD_WHITE);
-    display.fillRect(6,48-8,35,9,GxEPD_BLACK);
-    //display.fillRect(7,49,33,7,GxEPD_WHITE);
-    display.fillRect(7,49-8,Battary_level,7,GxEPD_WHITE);
-    //display.updateWindow(7,49,33,7);
+void showBattary() {
+  if (Battary_level > 33)Battary_level = 33;
+  else if (Battary_level < 0)Battary_level = 0;
+  display.fillRect(4, 46 - 8, 39, 13, GxEPD_WHITE);
+  display.fillRect(43, 49 - 8, 3, 8, GxEPD_WHITE);
+  display.fillRect(6, 48 - 8, 35, 9, GxEPD_BLACK);
+  //display.fillRect(7,49,33,7,GxEPD_WHITE);
+  display.fillRect(7, 49 - 8, Battary_level, 7, GxEPD_WHITE);
+  //display.updateWindow(7,49,33,7);
 }
 
-void showBme680(){
-    static int i=0;
-    if(i>=BME680_FLASHTIME){
-        i=0;
-        //flashBme();
-    }
+void showBme680() {
+  static int i = 0;
+  if (i >= BME680_FLASHTIME) {
+    i = 0;
+    //flashBme();
+  }
 #ifndef BME_ENABLE
-    bme680_str.temperature=246;
-    bme680_str.pressure=1013;
-    bme680_str.humidity=50;
-    bme680_str.iaq=100;
+  bme680_str.temperature = 246;
+  bme680_str.pressure = 1013;
+  bme680_str.humidity = 50;
+  bme680_str.iaq = 100;
 #endif
-    
-//    display.fillRect(0, 0, 49, 63-8, GxEPD_BLACK);
-//    display.setCursor(2, 32);
-//    display.setTextColor(GxEPD_WHITE);
-//    display.setFont(fonts[0]);
-//    display.setTextSize(1);
-//    display.print(bme680_str.temperature);
 
-    display.fillRect(0, 0, 49, 63-8, GxEPD_BLACK);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_helvB24_tn);
-    u8g2_for_adafruit_gfx.setCursor(4, 32);
-    u8g2_for_adafruit_gfx.print(bme680_str.temperature / 10);
+  //    display.fillRect(0, 0, 49, 63-8, GxEPD_BLACK);
+  //    display.setCursor(2, 32);
+  //    display.setTextColor(GxEPD_WHITE);
+  //    display.setFont(fonts[0]);
+  //    display.setTextSize(1);
+  //    display.print(bme680_str.temperature);
 
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_7x14B_tf);
-    u8g2_for_adafruit_gfx.setCursor(41, 31);
-    u8g2_for_adafruit_gfx.print(bme680_str.temperature % 10);
+  display.fillRect(0, 0, 49, 63 - 8, GxEPD_BLACK);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_helvB24_tn);
+  u8g2_for_adafruit_gfx.setCursor(4, 32);
+  u8g2_for_adafruit_gfx.print(bme680_str.temperature / 10);
 
-    display.fillRect(52, 0, 48, 26, GxEPD_BLACK);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
-    u8g2_for_adafruit_gfx.setCursor(74, 20);
-    display.drawBitmap(53, 4, p_icon, 18, 18,GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.print(bme680_str.pressure);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_7x14B_tf);
+  u8g2_for_adafruit_gfx.setCursor(41, 31);
+  u8g2_for_adafruit_gfx.print(bme680_str.temperature % 10);
 
-    display.fillRect(52, 29, 48, 26, GxEPD_BLACK);
-    display.drawBitmap(53, 33, h_icon, 18, 18,GxEPD_WHITE);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-    //u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
-    u8g2_for_adafruit_gfx.setCursor(74, 48);
-    u8g2_for_adafruit_gfx.print(String(bme680_str.humidity)+"%");
+  display.fillRect(52, 0, 48, 26, GxEPD_BLACK);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
+  u8g2_for_adafruit_gfx.setCursor(74, 20);
+  display.drawBitmap(53, 4, p_icon, 18, 18, GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.print(bme680_str.pressure);
 
-//    display.fillRect(51, 44, 49, 19, GxEPD_BLACK);
-//    display.drawBitmap(52, 45, a_icon, 18, 18,GxEPD_WHITE);
-//    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-//    //u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
-//    u8g2_for_adafruit_gfx.setCursor(73, 60);
-//    u8g2_for_adafruit_gfx.print(bme680_str.iaq);
+  display.fillRect(52, 29, 48, 26, GxEPD_BLACK);
+  display.drawBitmap(53, 33, h_icon, 18, 18, GxEPD_WHITE);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  //u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
+  u8g2_for_adafruit_gfx.setCursor(74, 48);
+  u8g2_for_adafruit_gfx.print(String(bme680_str.humidity) + "%");
 
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
-    u8g2_for_adafruit_gfx.setFontDirection(0);
-    u8g2_for_adafruit_gfx.setFontMode(1);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+  //    display.fillRect(51, 44, 49, 19, GxEPD_BLACK);
+  //    display.drawBitmap(52, 45, a_icon, 18, 18,GxEPD_WHITE);
+  //    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  //    //u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
+  //    u8g2_for_adafruit_gfx.setCursor(73, 60);
+  //    u8g2_for_adafruit_gfx.print(bme680_str.iaq);
 
-    showBattary();
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
+  u8g2_for_adafruit_gfx.setFontDirection(0);
+  u8g2_for_adafruit_gfx.setFontMode(1);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
 
-    display.updateWindow(0,0,100,63-7);
-    i++;
+  showBattary();
+
+  display.updateWindow(0, 0, 100, 63 - 7);
+  i++;
 }
 
-void flashBme(){
-    display.fillRect(0, 0, 49, 63-8, GxEPD_BLACK);
-    display.fillRect(52, 0, 48, 26, GxEPD_BLACK);
-    display.fillRect(52, 29, 48, 26, GxEPD_BLACK);
-    display.updateWindow(0,0,100,64);
-    display.fillRect(0, 0, 49, 63-8, GxEPD_WHITE);
-    display.fillRect(52, 0, 48, 26, GxEPD_WHITE);
-    display.fillRect(52, 29, 48, 26, GxEPD_WHITE);
-    display.updateWindow(0,0,100,64);
-    showBattary();
+void flashBme() {
+  display.fillRect(0, 0, 49, 63 - 8, GxEPD_BLACK);
+  display.fillRect(52, 0, 48, 26, GxEPD_BLACK);
+  display.fillRect(52, 29, 48, 26, GxEPD_BLACK);
+  display.updateWindow(0, 0, 100, 64);
+  display.fillRect(0, 0, 49, 63 - 8, GxEPD_WHITE);
+  display.fillRect(52, 0, 48, 26, GxEPD_WHITE);
+  display.fillRect(52, 29, 48, 26, GxEPD_WHITE);
+  display.updateWindow(0, 0, 100, 64);
+  //showBattary();
 }
 
-void flashWeather(){
-    display.fillRect(0, 65-7, 100, 31, GxEPD_BLACK);
-    display.fillRect(0, 98-6, 100, 30, GxEPD_BLACK);
-    display.updateWindow(0, 65-6, 100, 62, true);
-    display.fillRect(0, 65-7, 100, 31, GxEPD_WHITE);
-    display.fillRect(0, 98-6, 100, 30, GxEPD_WHITE);
-    display.updateWindow(0, 65-6, 100, 62, true);
+void flashWeather() {
+  display.fillRect(0, 65 - 7, 100, 31, GxEPD_BLACK);
+  display.fillRect(0, 98 - 6, 100, 30, GxEPD_BLACK);
+  display.updateWindow(0, 65 - 6, 100, 62, true);
+  display.fillRect(0, 65 - 7, 100, 31, GxEPD_WHITE);
+  display.fillRect(0, 98 - 6, 100, 30, GxEPD_WHITE);
+  display.updateWindow(0, 65 - 6, 100, 62, true);
 }
 
 void showMianPage(void)
 {
   static int i = 0;
-    displayInit();
-    display.fillScreen(GxEPD_WHITE);
+  displayInit();
+  display.fillScreen(GxEPD_WHITE);
 
-//display.update();
+  //display.update();
 
-display.updateWindow(0, 0, 249, 122, true);
+  display.updateWindow(0, 0, 249, 122, true);
 
-//    display.fillRect(0, 0, 49, 63, GxEPD_BLACK);
-//    display.setCursor(2, 35);
-//    display.setTextColor(GxEPD_WHITE);
-//    display.setFont(fonts[0]);
-//    display.setTextSize(1);
-//    display.print("27");
-//
-//    display.fillRect(4,46,39,13,GxEPD_WHITE);
-//    display.fillRect(43, 49, 3, 8, GxEPD_WHITE);
-//    display.fillRect(6,48,35,9,GxEPD_BLACK);
-//    //display.fillRect(7,49,33,7,GxEPD_WHITE);
-//    display.fillRect(7,49,28,7,GxEPD_WHITE);
-//
-//    display.fillRect(51, 0, 49, 20, GxEPD_BLACK);
-//
-//    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-//
-//    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
-//    u8g2_for_adafruit_gfx.setCursor(73, 17);
-//    u8g2_for_adafruit_gfx.print(1019);
-//    display.drawBitmap(52, 1, p_icon, 18, 18,GxEPD_WHITE);
-//
-//
-//    display.fillRect(51, 22, 49, 20, GxEPD_BLACK);
-//
-//    display.drawBitmap(52, 23, h_icon, 18, 18,GxEPD_WHITE);
-//    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-//    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
-//    u8g2_for_adafruit_gfx.setCursor(73, 38);
-//    u8g2_for_adafruit_gfx.print("98%");
-//
-//
-//
-//
-//    display.fillRect(51, 44, 49, 19, GxEPD_BLACK);
-//
-//    display.drawBitmap(52, 45, a_icon, 18, 18,GxEPD_WHITE);
-//
-//    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
-//    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
-//    u8g2_for_adafruit_gfx.setCursor(73, 60);
-//    u8g2_for_adafruit_gfx.print("98%");
-//
-//    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
-//    u8g2_for_adafruit_gfx.setFontDirection(0);
-//    u8g2_for_adafruit_gfx.setFontMode(1);
-//    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+  //    display.fillRect(0, 0, 49, 63, GxEPD_BLACK);
+  //    display.setCursor(2, 35);
+  //    display.setTextColor(GxEPD_WHITE);
+  //    display.setFont(fonts[0]);
+  //    display.setTextSize(1);
+  //    display.print("27");
+  //
+  //    display.fillRect(4,46,39,13,GxEPD_WHITE);
+  //    display.fillRect(43, 49, 3, 8, GxEPD_WHITE);
+  //    display.fillRect(6,48,35,9,GxEPD_BLACK);
+  //    //display.fillRect(7,49,33,7,GxEPD_WHITE);
+  //    display.fillRect(7,49,28,7,GxEPD_WHITE);
+  //
+  //    display.fillRect(51, 0, 49, 20, GxEPD_BLACK);
+  //
+  //    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  //
+  //    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
+  //    u8g2_for_adafruit_gfx.setCursor(73, 17);
+  //    u8g2_for_adafruit_gfx.print(1019);
+  //    display.drawBitmap(52, 1, p_icon, 18, 18,GxEPD_WHITE);
+  //
+  //
+  //    display.fillRect(51, 22, 49, 20, GxEPD_BLACK);
+  //
+  //    display.drawBitmap(52, 23, h_icon, 18, 18,GxEPD_WHITE);
+  //    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  //    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
+  //    u8g2_for_adafruit_gfx.setCursor(73, 38);
+  //    u8g2_for_adafruit_gfx.print("98%");
+  //
+  //
+  //
+  //
+  //    display.fillRect(51, 44, 49, 19, GxEPD_BLACK);
+  //
+  //    display.drawBitmap(52, 45, a_icon, 18, 18,GxEPD_WHITE);
+  //
+  //    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_WHITE);
+  //    u8g2_for_adafruit_gfx.setFont(u8g2_font_lastapprenticebold_tr);
+  //    u8g2_for_adafruit_gfx.setCursor(73, 60);
+  //    u8g2_for_adafruit_gfx.print("98%");
+  //
+  //    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
+  //    u8g2_for_adafruit_gfx.setFontDirection(0);
+  //    u8g2_for_adafruit_gfx.setFontMode(1);
+  //    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
 
-switch_page(page_state);
+  switch_page(page_state);
 
 
-//display.updateWindow(0, 0, 296, 128, true);
+  //display.updateWindow(0, 0, 296, 128, true);
 
 }
 
 uint16_t read16(File &f)
 {
-    // BMP data is stored little-endian, same as Arduino.
-    uint16_t result;
-    ((uint8_t *)&result)[0] = f.read(); // LSB
-    ((uint8_t *)&result)[1] = f.read(); // MSB
-    return result;
+  // BMP data is stored little-endian, same as Arduino.
+  uint16_t result;
+  ((uint8_t *)&result)[0] = f.read(); // LSB
+  ((uint8_t *)&result)[1] = f.read(); // MSB
+  return result;
 }
 
 uint32_t read32(File &f)
 {
-    // BMP data is stored little-endian, same as Arduino.
-    uint32_t result;
-    ((uint8_t *)&result)[0] = f.read(); // LSB
-    ((uint8_t *)&result)[1] = f.read();
-    ((uint8_t *)&result)[2] = f.read();
-    ((uint8_t *)&result)[3] = f.read(); // MSB
-    return result;
+  // BMP data is stored little-endian, same as Arduino.
+  uint32_t result;
+  ((uint8_t *)&result)[0] = f.read(); // LSB
+  ((uint8_t *)&result)[1] = f.read();
+  ((uint8_t *)&result)[2] = f.read();
+  ((uint8_t *)&result)[3] = f.read(); // MSB
+  return result;
 }
 
 void displayInit(void)
 {
-    static bool isInit = false;
-    if (isInit) {
-        return;
-    }
-    isInit = true;
-    display.init();
-    display.setRotation(3);
-    display.eraseDisplay();
-    display.setTextColor(GxEPD_BLACK);
-    display.setFont(&DEFALUT_FONT);
-    display.setTextSize(0);
+  static bool isInit = false;
+  if (isInit) {
+    return;
+  }
+  isInit = true;
+  display.init();
+  display.setRotation(3);
+  display.eraseDisplay();
+  display.setTextColor(GxEPD_BLACK);
+  display.setFont(&DEFALUT_FONT);
+  display.setTextSize(0);
 #if SDCARD_ENABLE
-    if (SDCARD_SS > 0) {
-        display.fillScreen(GxEPD_WHITE);
+  if (SDCARD_SS > 0) {
+    display.fillScreen(GxEPD_WHITE);
 #if !(TTGO_T5_2_2)
-        SPIClass sdSPI(VSPI);
-        sdSPI.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
-        if (!SD.begin(SDCARD_SS, sdSPI))
+    SPIClass sdSPI(VSPI);
+    sdSPI.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
+    if (!SD.begin(SDCARD_SS, sdSPI))
 #else
-        if (!SD.begin(SDCARD_SS))
+    if (!SD.begin(SDCARD_SS))
 #endif
-        {
-            displayText("SDCard MOUNT FAIL", 50, CENTER_ALIGNMENT);
-        } else {
-            displayText("SDCard MOUNT PASS", 50, CENTER_ALIGNMENT);
-            uint32_t cardSize = SD.cardSize() / (1024 * 1024);
-            displayText("SDCard Size: " + String(cardSize) + "MB", 70, CENTER_ALIGNMENT);
-        }
-        display.update();
-        delay(2000);
+    {
+      displayText("SDCard MOUNT FAIL", 50, CENTER_ALIGNMENT);
+    } else {
+      displayText("SDCard MOUNT PASS", 50, CENTER_ALIGNMENT);
+      uint32_t cardSize = SD.cardSize() / (1024 * 1024);
+      displayText("SDCard Size: " + String(cardSize) + "MB", 70, CENTER_ALIGNMENT);
     }
+    display.update();
+    delay(2000);
+  }
 #endif
 }
 
 bool setPowerBoostKeepOn(int en)
 {
-    Wire.beginTransmission(IP5306_ADDR);
-    Wire.write(IP5306_REG_SYS_CTL0);
-    if (en)
-        Wire.write(0x37); // Set bit1: 1 enable 0 disable boost keep on
-    else
-        Wire.write(0x35); // 0x37 is default reg value
-    return Wire.endTransmission() == 0;
+  Wire.beginTransmission(IP5306_ADDR);
+  Wire.write(IP5306_REG_SYS_CTL0);
+  if (en)
+    Wire.write(0x37); // Set bit1: 1 enable 0 disable boost keep on
+  else
+    Wire.write(0x35); // 0x37 is default reg value
+  return Wire.endTransmission() == 0;
 }
 
-bool weather_mqtt_json(char s[]){
-    char code1[8],code2[8];
-    static int i=0;
+bool weather_mqtt_json(char s[]) {
+  char code1[8], code2[8];
+  static int i = 0;
 #if ARDUINOJSON_VERSION_MAJOR == 5
-    StaticJsonBuffer<256> jsonBuffer;
-      JsonObject &root = jsonBuffer.parseObject(s);
-      if (!root.success()) {
-          Serial.println(F("Failed to json weather"));
-          return false;
-      }
-      root.printTo(Serial);
+  StaticJsonBuffer<256> jsonBuffer;
+  JsonObject &root = jsonBuffer.parseObject(s);
+  if (!root.success()) {
+    Serial.println(F("Failed to json weather"));
+    return false;
+  }
+  root.printTo(Serial);
 #elif ARDUINOJSON_VERSION_MAJOR == 6
-    StaticJsonDocument<256> root;
-      DeserializationError error = deserializeJson(root, s);
-      if (error) {
-          Serial.println(F("Failed to json weather"));
-          return false;
-      }
+  StaticJsonDocument<256> root;
+  DeserializationError error = deserializeJson(root, s);
+  if (error) {
+    Serial.println(F("Failed to json weather"));
+    return false;
+  }
 #endif
-    if ((const char *)root["code_1"] == NULL) {
-        return false;
-    }
+  if ((const char *)root["code_1"] == NULL) {
+    return false;
+  }
 
-    strlcpy(code1, wea_str.code_1, sizeof(code1));
-    strlcpy(code2, wea_str.code_2, sizeof(code2));
-    strlcpy(wea_str.code_1, root["code_1"], sizeof(wea_str.code_1));
-    strlcpy(wea_str.code_2, root["code_2"], sizeof(wea_str.code_2));
-    strlcpy(wea_str.wea_1, root["wea_1"], sizeof(wea_str.wea_1));
-    strlcpy(wea_str.wea_2, root["wea_2"], sizeof(wea_str.wea_2));
-    strlcpy(wea_str.tmp_1_min, root["tmp_1_min"], sizeof(wea_str.tmp_1_min));
-    strlcpy(wea_str.tmp_1_max, root["tmp_1_max"], sizeof(wea_str.tmp_1_max));
-    strlcpy(wea_str.tmp_2_min, root["tmp_2_min"], sizeof(wea_str.tmp_2_min));
-    strlcpy(wea_str.tmp_2_max, root["tmp_2_max"], sizeof(wea_str.tmp_2_max));
-    //Serial.println(wea_str.code_1);
-    if(strcmp(code1,wea_str.code_1)||strcmp(code2,wea_str.code_2)){
-        i=10;
-    }
-    if(i>=10){
-        //flashWeather();
-        i=0;
-    }
-    first_weather();
-    second_weather();
-    i++;
-    return true;
+  strlcpy(code1, wea_str.code_1, sizeof(code1));
+  strlcpy(code2, wea_str.code_2, sizeof(code2));
+  strlcpy(wea_str.code_1, root["code_1"], sizeof(wea_str.code_1));
+  strlcpy(wea_str.code_2, root["code_2"], sizeof(wea_str.code_2));
+  strlcpy(wea_str.wea_1, root["wea_1"], sizeof(wea_str.wea_1));
+  strlcpy(wea_str.wea_2, root["wea_2"], sizeof(wea_str.wea_2));
+  strlcpy(wea_str.tmp_1_min, root["tmp_1_min"], sizeof(wea_str.tmp_1_min));
+  strlcpy(wea_str.tmp_1_max, root["tmp_1_max"], sizeof(wea_str.tmp_1_max));
+  strlcpy(wea_str.tmp_2_min, root["tmp_2_min"], sizeof(wea_str.tmp_2_min));
+  strlcpy(wea_str.tmp_2_max, root["tmp_2_max"], sizeof(wea_str.tmp_2_max));
+  //Serial.println(wea_str.code_1);
+  if (strcmp(code1, wea_str.code_1) || strcmp(code2, wea_str.code_2)) {
+    i = 10;
+  }
+  if (i >= 10) {
+    //flashWeather();
+    i = 0;
+  }
+  first_weather();
+  second_weather();
+  i++;
+  return true;
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-  char s[500]="";
+  char s[500] = "";
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
-    sprintf(s,"%s%c",s,(char)payload[i]);
+    sprintf(s, "%s%c", s, (char)payload[i]);
   }
   Serial.println();
-//  Serial.print(s);
-//  Serial.println();
+  //  Serial.print(s);
+  //  Serial.println();
   //String c=Encoding.ASCII.GetChars(payload);
-  if(strcmp(topic,"notice_r")==0){
-      strlcpy(notice_str.notice_6, notice_str.notice_5, sizeof(notice_str.notice_6));
-      strlcpy(notice_str.notice_5, notice_str.notice_4, sizeof(notice_str.notice_5));
-      strlcpy(notice_str.notice_4, notice_str.notice_3, sizeof(notice_str.notice_4));
-      strlcpy(notice_str.notice_3, notice_str.notice_2, sizeof(notice_str.notice_3));
-      strlcpy(notice_str.notice_2, notice_str.notice_1, sizeof(notice_str.notice_2));
-      strlcpy(notice_str.notice_1, s, sizeof(notice_str.notice_1));
+  if (strcmp(topic, "notice_r") == 0) {
+    strlcpy(notice_str.notice_6, notice_str.notice_5, sizeof(notice_str.notice_6));
+    strlcpy(notice_str.notice_5, notice_str.notice_4, sizeof(notice_str.notice_5));
+    strlcpy(notice_str.notice_4, notice_str.notice_3, sizeof(notice_str.notice_4));
+    strlcpy(notice_str.notice_3, notice_str.notice_2, sizeof(notice_str.notice_3));
+    strlcpy(notice_str.notice_2, notice_str.notice_1, sizeof(notice_str.notice_2));
+    strlcpy(notice_str.notice_1, s, sizeof(notice_str.notice_1));
     saveBadgeInfo(&notice_str);
     Serial.print(notice_str.notice_1);
-    if(page_state==1){
+    if (page_state == 1) {
       firstPage();
-    }else if(page_state==2){
+    } else if (page_state == 2) {
       secondPage();
     }
     client.publish("notice_back_r", "already received notice");
-  }else if(strcmp(topic,"weather_r")==0){
-      weather_mqtt_json(s);
-      weather_first=1;
-  //}else if(strcmp(topic,"msi_info")==0){
-      //if(page_state==3)
-      //msi_info_mqtt_json(s);
-  }else if(strcmp(topic,"to_temperature_r")==0){
+  } else if (strcmp(topic, "weather_r") == 0) {
+    weather_mqtt_json(s);
+    weather_first = 1;
+    //}else if(strcmp(topic,"msi_info")==0){
+    //if(page_state==3)
+    //msi_info_mqtt_json(s);
+  } else if (strcmp(topic, "to_temperature_r") == 0) {
     char s[8];
-    itoa(bme680_str.temperature,s,10);
-    client.publish("from_temperature_r",s);
-  }else if(strcmp(topic,"to_humidity_r")==0){
+    itoa(bme680_str.temperature, s, 10);
+    client.publish("from_temperature_r", s);
+  } else if (strcmp(topic, "to_humidity_r") == 0) {
     char s[8];
-    itoa(bme680_str.humidity,s,10);
-    client.publish("from_humidity_r",s);
-  }else if(strcmp(topic,"to_pressure_r")==0){
+    itoa(bme680_str.humidity, s, 10);
+    client.publish("from_humidity_r", s);
+  } else if (strcmp(topic, "to_pressure_r") == 0) {
     char s[8];
-    itoa(bme680_str.pressure,s,10);
-    client.publish("from_pressure_r",s);
+    itoa(bme680_str.pressure, s, 10);
+    client.publish("from_pressure_r", s);
   }
 }
 
@@ -1123,16 +1125,16 @@ void reconnect() {
   }
 }
 
-void setTime(){
+void setTime() {
   struct tm timeinfo;
-  static int time_failed=0;
+  static int time_failed = 0;
   while (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     delay(200);
     time_failed++;
-    if(time_failed>10){
-        esp_restart();
+    if (time_failed > 10) {
+      esp_restart();
     }
   }
 
@@ -1146,364 +1148,364 @@ void setTime(){
   //timerAlarmEnable(timer);
 }
 
-void setWeather(){
-    //client.publish("weather_call", "call for weather info");
-    // Start an alarm
-    timerAlarmEnable(timer2);
+void setWeather() {
+  //client.publish("weather_call", "call for weather info");
+  // Start an alarm
+  timerAlarmEnable(timer2);
 }
 
-void IRAM_ATTR onTimer(){
+void IRAM_ATTR onTimer() {
   Serial.println("timer");
   timer_1 = 1;
 }
 
-void IRAM_ATTR onTimer2(){
-    static int weather=0, battery=0,bme680_t=0;
-    int weather_flush_time;
-    if(weather_first==0){
-      weather_flush_time=1;
-    }else{
-      weather_flush_time=120;
-    }
-    Serial.print("timer:");
-    Serial.print(weather);
-    Serial.print(" ");
-    Serial.print(battery);
-    Serial.print(" ");
-    Serial.println(bme680_t);
-    if(weather==weather_flush_time){
-        timer_2_weather = 1;
-        weather=0;
-    }
-    if(battery==5){
-        timer_2_battery = 1;
-        battery=0;
-    }
-    if(bme680_t==1){
-        timer_2_bme680 = 1;
-        bme680_t=0;
-    }
-    timer_1=1;
-    weather++;
-    battery++;
-    bme680_t++;
+void IRAM_ATTR onTimer2() {
+  static int weather = 0, battery = 0, bme680_t = 0;
+  int weather_flush_time;
+  if (weather_first == 0) {
+    weather_flush_time = 1;
+  } else {
+    weather_flush_time = 120;
+  }
+  Serial.print("timer:");
+  Serial.print(weather);
+  Serial.print(" ");
+  Serial.print(battery);
+  Serial.print(" ");
+  Serial.println(bme680_t);
+  if (weather == weather_flush_time) {
+    timer_2_weather = 1;
+    weather = 0;
+  }
+  if (battery == 5) {
+    timer_2_battery = 1;
+    battery = 0;
+  }
+  if (bme680_t == 1) {
+    timer_2_bme680 = 1;
+    bme680_t = 0;
+  }
+  timer_1 = 1;
+  weather++;
+  battery++;
+  bme680_t++;
 }
 
-void timerRec(){
-  if(page_state==1){
+void timerRec() {
+  if (page_state == 1) {
     LCD_print();
-    display.updateWindow(114-9, 16, 141, 59, true);
+    display.updateWindow(114 - 9, 16, 141, 59, true);
   }
 }
 
-bool bme680_read(){
+bool bme680_read() {
 
-  bme680_str.temperature=bme.readTemperature()*10;
-  bme680_str.humidity=bme.readHumidity();
-  bme680_str.pressure=bme.readPressure() / 100.0F;
-  
-    Serial.print("Temperature = ");
-    Serial.print(bme.readTemperature());
-    Serial.println(" *C");
+  bme680_str.temperature = bme.readTemperature() * 10;
+  bme680_str.humidity = bme.readHumidity();
+  bme680_str.pressure = bme.readPressure() / 100.0F;
 
-    Serial.print("Pressure = ");
+  Serial.print("Temperature = ");
+  Serial.print(bme.readTemperature());
+  Serial.println(" *C");
 
-    Serial.print(bme.readPressure() / 100.0F);
-    Serial.println(" hPa");
+  Serial.print("Pressure = ");
 
-    Serial.print("Approx. Altitude = ");
-    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    Serial.println(" m");
+  Serial.print(bme.readPressure() / 100.0F);
+  Serial.println(" hPa");
 
-    Serial.print("Humidity = ");
-    Serial.print(bme.readHumidity());
-    Serial.println(" %");
-    return true;
+  Serial.print("Approx. Altitude = ");
+  Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+  Serial.println(" m");
+
+  Serial.print("Humidity = ");
+  Serial.print(bme.readHumidity());
+  Serial.println(" %");
+  return true;
 }
 
 void showVoltage()
 {
-    static uint64_t timeStamp = 0;
-    if (millis() - timeStamp > 1000) {
-        timeStamp = millis();
-        uint16_t v = analogRead(ADC_PIN);
-        float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
-        String voltage = "Voltage :" + String(battery_voltage) + "V";
-        Serial.println(voltage);
-              if(battery_voltage<3.2){
-            display.fillScreen(GxEPD_BLACK);
-            display.update();
-            delay(1000);
-            display.update();
-            delay(1000);
-            display.update();
-            delay(1000);
-            display.fillScreen(GxEPD_WHITE);
-            display.update();
-            delay(1000);
-            display.update();
-            delay(1000);
-            display.update();
-            delay(1000);
-          display.drawBitmap(85, 15, battery2, 100, 100, GxEPD_BLACK);
-          display.drawBitmap(30, 82, usb, 40, 40, GxEPD_BLACK);
-          display.update();
-          delay(1000);
-          display.update();
-          delay(1000);
-          Serial.println("Going to sleep now");
-          Serial.flush();
-          //Wire.end();
-          display.powerDown();
-          esp_deep_sleep_start();
-      }
-        Battary_level=map(battery_voltage*100,330,420,0,33);
-        //showBattary();
-        Serial.print("map:");
-        Serial.println(Battary_level);
-//        tft.fillScreen(TFT_BLACK);
-//        tft.setTextDatum(MC_DATUM);
-//        tft.drawString(voltage,  tft.width() / 2, tft.height() / 2 );
+  static uint64_t timeStamp = 0;
+  if (millis() - timeStamp > 1000) {
+    timeStamp = millis();
+    uint16_t v = analogRead(ADC_PIN);
+    float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+    String voltage = "Voltage :" + String(battery_voltage) + "V";
+    Serial.println(voltage);
+    if (battery_voltage < 3.2) {
+      display.fillScreen(GxEPD_BLACK);
+      display.update();
+      delay(1000);
+      display.update();
+      delay(1000);
+      display.update();
+      delay(1000);
+      display.fillScreen(GxEPD_WHITE);
+      display.update();
+      delay(1000);
+      display.update();
+      delay(1000);
+      display.update();
+      delay(1000);
+      display.drawBitmap(85, 15, battery2, 100, 100, GxEPD_BLACK);
+      display.drawBitmap(30, 82, usb, 40, 40, GxEPD_BLACK);
+      display.update();
+      delay(1000);
+      display.update();
+      delay(1000);
+      Serial.println("Going to sleep now");
+      Serial.flush();
+      //Wire.end();
+      display.powerDown();
+      esp_deep_sleep_start();
     }
+    Battary_level = map(battery_voltage * 100, 330, 420, 0, 33);
+    //showBattary();
+    Serial.print("map:");
+    Serial.println(Battary_level);
+    //        tft.fillScreen(TFT_BLACK);
+    //        tft.setTextDatum(MC_DATUM);
+    //        tft.drawString(voltage,  tft.width() / 2, tft.height() / 2 );
+  }
 }
 
 void setup()
 {
-    Serial.begin(115200);
-    delay(500);
+  Serial.begin(115200);
+  delay(500);
 
-    //Increment boot number and print it every reboot
-    ++bootCount;
-    Serial.println("Boot number: " + String(bootCount));
-    if(bootCount==2){
-      esp_restart();
-    }
+  //Increment boot number and print it every reboot
+  ++bootCount;
+  Serial.println("Boot number: " + String(bootCount));
+  if (bootCount == 2) {
+    esp_restart();
+  }
 
-    Serial.print("CPU Frequency:");
-    Serial.println(getCpuFrequencyMhz());
-
-
-    WebServerStart();
+  Serial.print("CPU Frequency:");
+  Serial.println(getCpuFrequencyMhz());
 
 
-//    adcAttachPin(35);
-//    analogSetAttenuation(ADC_11db);
-//    analogSetSamples(10);
+  WebServerStart();
 
-    esp_adc_cal_characteristics_t adc_chars;
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
-    //Check type of calibration value used to characterize ADC
-    if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-        Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
-        Serial.println();
-        vref = adc_chars.vref;
-    } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-        Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
-        Serial.println();
-    } else {
-        Serial.println("Default Vref: 1100mV");
-    }
 
-    if (!client.connected()) {
-        reconnect();
-    }
+  //    adcAttachPin(35);
+  //    analogSetAttenuation(ADC_11db);
+  //    analogSetSamples(10);
 
-    u8g2_for_adafruit_gfx.begin(display);
-    //u8g2_for_adafruit_gfx.setFont(u8g2_font_prospero_bold_nbp_tn);
-    u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
-    u8g2_for_adafruit_gfx.setFontDirection(0);
-    u8g2_for_adafruit_gfx.setFontMode(1);
-    u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  //Check type of calibration value used to characterize ADC
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+    Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
+    Serial.println();
+    vref = adc_chars.vref;
+  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+    Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
+    Serial.println();
+  } else {
+    Serial.println("Default Vref: 1100mV");
+  }
 
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  if (!client.connected()) {
+    reconnect();
+  }
 
-//    // Create semaphore to inform us when the timer has fired
-//    timerSemaphore = xSemaphoreCreateBinary();
-//    // Use 1st timer of 4 (counted from zero).
-//    // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
-//    // info).
-//    timer = timerBegin(3, 80, true);
-//    // Attach onTimer function to our timer.
-//    timerAttachInterrupt(timer, &onTimer, true);
-//    // Set alarm to call onTimer function every second (value in microseconds).
-//    // Repeat the alarm (third parameter)
-//    timerAlarmWrite(timer, 60000000, true);
+  u8g2_for_adafruit_gfx.begin(display);
+  //u8g2_for_adafruit_gfx.setFont(u8g2_font_prospero_bold_nbp_tn);
+  u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
+  u8g2_for_adafruit_gfx.setFontDirection(0);
+  u8g2_for_adafruit_gfx.setFontMode(1);
+  u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
 
-    // Create semaphore to inform us when the timer has fired
-    timerSemaphore = xSemaphoreCreateBinary();
-    // Use 1st timer of 4 (counted from zero).
-    // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
-    // info).
-    timer2 = timerBegin(2, 80, true);
-    // Attach onTimer function to our timer.
-    timerAttachInterrupt(timer2, &onTimer2, true);
-    // Set alarm to call onTimer function every second (value in microseconds).
-    // Repeat the alarm (third parameter)
-    timerAlarmWrite(timer2, 60000000, true);
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  //    // Create semaphore to inform us when the timer has fired
+  //    timerSemaphore = xSemaphoreCreateBinary();
+  //    // Use 1st timer of 4 (counted from zero).
+  //    // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
+  //    // info).
+  //    timer = timerBegin(3, 80, true);
+  //    // Attach onTimer function to our timer.
+  //    timerAttachInterrupt(timer, &onTimer, true);
+  //    // Set alarm to call onTimer function every second (value in microseconds).
+  //    // Repeat the alarm (third parameter)
+  //    timerAlarmWrite(timer, 60000000, true);
+
+  // Create semaphore to inform us when the timer has fired
+  timerSemaphore = xSemaphoreCreateBinary();
+  // Use 1st timer of 4 (counted from zero).
+  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
+  // info).
+  timer2 = timerBegin(2, 80, true);
+  // Attach onTimer function to our timer.
+  timerAttachInterrupt(timer2, &onTimer2, true);
+  // Set alarm to call onTimer function every second (value in microseconds).
+  // Repeat the alarm (third parameter)
+  timerAlarmWrite(timer2, 60000000, true);
 
 #ifdef ENABLE_IP5306
-    Wire.begin(I2C_SDA, I2C_SCL);
-    bool ret = setPowerBoostKeepOn(1);
-    Serial.printf("Power KeepUp %s\n", ret ? "PASS" : "FAIL");
+  Wire.begin(I2C_SDA, I2C_SCL);
+  bool ret = setPowerBoostKeepOn(1);
+  Serial.printf("Power KeepUp %s\n", ret ? "PASS" : "FAIL");
 #endif
 
-// It is only necessary to turn on the power amplifier power supply on the T5_V24 board.
+  // It is only necessary to turn on the power amplifier power supply on the T5_V24 board.
 #ifdef AMP_POWER_CTRL
-    pinMode(AMP_POWER_CTRL, OUTPUT);
-    digitalWrite(AMP_POWER_CTRL, HIGH);
+  pinMode(AMP_POWER_CTRL, OUTPUT);
+  digitalWrite(AMP_POWER_CTRL, HIGH);
 #endif
 
 #ifdef DAC_MAX98357
-    AudioGeneratorMP3 *mp3;
-    AudioFileSourcePROGMEM *file;
-    AudioOutputI2S *out;
-    AudioFileSourceID3 *id3;
+  AudioGeneratorMP3 *mp3;
+  AudioFileSourcePROGMEM *file;
+  AudioOutputI2S *out;
+  AudioFileSourceID3 *id3;
 
-    file = new AudioFileSourcePROGMEM(image, sizeof(image));
-    id3 = new AudioFileSourceID3(file);
-    out = new AudioOutputI2S();
-    out->SetPinout(IIS_BCK, IIS_WS, IIS_DOUT);
-    mp3 = new AudioGeneratorMP3();
-    mp3->begin(id3, out);
-    while (1) {
-        if (mp3->isRunning()) {
-            if (!mp3->loop())
-                mp3->stop();
-        } else {
-            Serial.printf("MP3 done\n");
-            break;
-        }
+  file = new AudioFileSourcePROGMEM(image, sizeof(image));
+  id3 = new AudioFileSourceID3(file);
+  out = new AudioOutputI2S();
+  out->SetPinout(IIS_BCK, IIS_WS, IIS_DOUT);
+  mp3 = new AudioGeneratorMP3();
+  mp3->begin(id3, out);
+  while (1) {
+    if (mp3->isRunning()) {
+      if (!mp3->loop())
+        mp3->stop();
+    } else {
+      Serial.printf("MP3 done\n");
+      break;
     }
+  }
 #endif
 
-    if (SPEAKER_OUT > 0) {
-        ledcSetup(CHANNEL_0, 1000, 8);
-        ledcAttachPin(SPEAKER_OUT, CHANNEL_0);
-        int i = 3;
-        while (i--) {
-            //ledcWriteTone(CHANNEL_0, 1000);
-            delay(200);
-            ledcWriteTone(CHANNEL_0, 0);
-        }
+  if (SPEAKER_OUT > 0) {
+    ledcSetup(CHANNEL_0, 1000, 8);
+    ledcAttachPin(SPEAKER_OUT, CHANNEL_0);
+    int i = 3;
+    while (i--) {
+      //ledcWriteTone(CHANNEL_0, 1000);
+      delay(200);
+      ledcWriteTone(CHANNEL_0, 0);
     }
-    SPI.begin(SPI_CLK, SPI_MISO, SPI_MOSI, -1);
-    if (!FILESYSTEM.begin()) {
-        Serial.println("FILESYSTEM is not database");
-        Serial.println("Please use Arduino ESP32 Sketch data Upload files");
-        while (1) {
-            delay(1000);
-        }
+  }
+  SPI.begin(SPI_CLK, SPI_MISO, SPI_MOSI, -1);
+  if (!FILESYSTEM.begin()) {
+    Serial.println("FILESYSTEM is not database");
+    Serial.println("Please use Arduino ESP32 Sketch data Upload files");
+    while (1) {
+      delay(1000);
     }
-    if (!loadBadgeInfo(&notice_str)) {
-        loadDefaultInfo();
-    }
+  }
+  if (!loadBadgeInfo(&notice_str)) {
+    loadDefaultInfo();
+  }
 
-    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED) {
-        showMianPage();
-    }
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED) {
+    showMianPage();
+  }
 
 
-    setTime();
-    //delay(5000);
-    setWeather();
-    
+  setTime();
+  //delay(5000);
+  setWeather();
+
 #ifdef BME_ENABLE
   unsigned status;
-    // default settings
-    //status = bme.begin();
-    // You can also pass in a Wire library object like &Wire2
-    // status = bme.begin(0x76, &Wire2)
-    while (!bme.begin()) {
-        Serial.println("Could not find a valid BME280 sensor, check wiring!");
-        delay(1000);
-        bme680_errTime++;
-        if (bme680_errTime == 10) {
-            //esp_restart();
-            display.fillScreen(GxEPD_BLACK);
-            display.updateWindow(0, 0, 296, 128, true);
-            delay(1000);
-            display.update();
-            delay(1000);
-            display.fillScreen(GxEPD_WHITE);
-            display.update();
-            delay(1000);
-            display.update();
-            delay(1000);
-            u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
-            u8g2_for_adafruit_gfx.setBackgroundColor(GxEPD_WHITE);
-            u8g2_for_adafruit_gfx.setFont(u8g2_font_calibration_gothic_nbp_tf);
-            u8g2_for_adafruit_gfx.setCursor(75, 55);
-            u8g2_for_adafruit_gfx.print("An error occurred.");
-            u8g2_for_adafruit_gfx.setCursor(75, 85);
-            u8g2_for_adafruit_gfx.print("Please restart the system.");
-            display.drawBitmap(13, 38, oops, 50, 50, GxEPD_BLACK);
+  // default settings
+  //status = bme.begin();
+  // You can also pass in a Wire library object like &Wire2
+  // status = bme.begin(0x76, &Wire2)
+  while (!bme.begin()) {
+    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    delay(1000);
+    bme680_errTime++;
+    if (bme680_errTime == 10) {
+      //esp_restart();
+      display.fillScreen(GxEPD_BLACK);
+      display.updateWindow(0, 0, 296, 128, true);
+      delay(1000);
+      display.update();
+      delay(1000);
+      display.fillScreen(GxEPD_WHITE);
+      display.update();
+      delay(1000);
+      display.update();
+      delay(1000);
+      u8g2_for_adafruit_gfx.setForegroundColor(GxEPD_BLACK);
+      u8g2_for_adafruit_gfx.setBackgroundColor(GxEPD_WHITE);
+      u8g2_for_adafruit_gfx.setFont(u8g2_font_calibration_gothic_nbp_tf);
+      u8g2_for_adafruit_gfx.setCursor(75, 55);
+      u8g2_for_adafruit_gfx.print("An error occurred.");
+      u8g2_for_adafruit_gfx.setCursor(75, 85);
+      u8g2_for_adafruit_gfx.print("Please restart the system.");
+      display.drawBitmap(13, 38, oops, 50, 50, GxEPD_BLACK);
 
-//display.drawBitmap(100, 18, battery2, 100, 100, GxEPD_BLACK);
-//        display.drawBitmap(20, 88, usb, 40, 40, GxEPD_BLACK);
+      //display.drawBitmap(100, 18, battery2, 100, 100, GxEPD_BLACK);
+      //        display.drawBitmap(20, 88, usb, 40, 40, GxEPD_BLACK);
 
 
-            display.update();
-            delay(1000);
-            Serial.println("Going to sleep now");
-            Serial.flush();
-            //Wire.end();
-            display.powerDown();
-            esp_deep_sleep_start();
-        }
+      display.update();
+      delay(1000);
+      Serial.println("Going to sleep now");
+      Serial.flush();
+      //Wire.end();
+      display.powerDown();
+      esp_deep_sleep_start();
     }
-    bme680_errTime = 0;
+  }
+  bme680_errTime = 0;
 #endif
 
-    button_init();
+  button_init();
 
 
-    esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
-    setCpuFrequencyMhz(80);
-    Serial.print("CPU Frequency:");
-    Serial.println(getCpuFrequencyMhz());
+  esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
+  setCpuFrequencyMhz(80);
+  Serial.print("CPU Frequency:");
+  Serial.println(getCpuFrequencyMhz());
 }
 
 void loop()
 {
-    static int battery_adc=0;
+  static int battery_adc = 0;
 
-    button_loop();
-    if (!client.connected()) {
-      reconnect();
-    }
-    client.loop();
+  button_loop();
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
 
-    if(timer_1==1){
-      timer_1=0;
-      timerRec();
-    }
+  if (timer_1 == 1) {
+    timer_1 = 0;
+    timerRec();
+  }
 
-    if(timer_2_weather==1){
-        timer_2_weather=0;
-        client.publish("weather_call_r", "call for weather info");
-    }
+  if (timer_2_weather == 1) {
+    timer_2_weather = 0;
+    client.publish("weather_call_r", "call for weather info");
+  }
 
-    if(timer_2_battery==1){
-        showVoltage();
-        timer_2_battery=0;
-    }
+  if (timer_2_battery == 1) {
+    showVoltage();
+    timer_2_battery = 0;
+  }
 
-//    if(msi_info_state==-1){
-//        ;
-//    }else if(msi_info_state==1){
-//        client.publish("msi_info_call", "on");
-//        msi_info_state=-1;
-//    }else if(msi_info_state==0) {
-//        client.publish("msi_info_call", "off");
-//        msi_info_state = -1;
-//    }
+  //    if(msi_info_state==-1){
+  //        ;
+  //    }else if(msi_info_state==1){
+  //        client.publish("msi_info_call", "on");
+  //        msi_info_state=-1;
+  //    }else if(msi_info_state==0) {
+  //        client.publish("msi_info_call", "off");
+  //        msi_info_state = -1;
+  //    }
 
-    if(timer_2_bme680==1){
+  if (timer_2_bme680 == 1) {
 #ifdef BME_ENABLE
-        bme680_read();
-#endif     
-        showBme680();
-        timer_2_bme680=0;
-    }
+    bme680_read();
+#endif
+    showBme680();
+    timer_2_bme680 = 0;
+  }
 
 }

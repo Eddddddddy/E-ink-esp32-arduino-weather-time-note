@@ -32,6 +32,7 @@ const GFXfont *fonts[] = {
 };
 
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
@@ -53,29 +54,20 @@ const GFXfont *fonts[] = {
 #include <esp_pm.h>
 #include <esp_wifi_types.h>
 #include "esp32-hal-cpu.h"
+#include "config.h"
 
 #define FILESYSTEM SPIFFS
-
-//#define USE_AP_MODE
-//#define WEBSERVER
-//#define SDCARD_ENABLE
 
 /*100 * 100 bmp fromat*/
 //https://www.onlineconverter.com/jpg-to-bmp
 #define BADGE_CONFIG_FILE_NAME "/badge.data"
 #define DEFALUT_AVATAR_BMP "/avatar.bmp"
 #define DEFALUT_QR_CODE_BMP "/qr.bmp"
-#define WIFI_SSID "WiFi名"
-#define WIFI_PASSWORD "WiFi密码"
-#define MQTT_SERVER "更换为你的mqtt服务器地址"
 #define CHANNEL_0 0
 #define IP5306_ADDR 0X75
 #define IP5306_REG_SYS_CTL0 0x00
 #define SEALEVELPRESSURE_HPA (1002.2)
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  18000        /* Time ESP32 will go to sleep (in seconds) */
-#define SLEEPTIME 1
-#define BME680_FLASHTIME 20
 
 RTC_DATA_ATTR int bootCount = 0;
 
@@ -133,7 +125,9 @@ typedef struct {
 
 AsyncWebServer server(80);
 WiFiClient wifiClient;
-PubSubClient client(MQTT_SERVER, 1883, mqtt_callback, wifiClient);
+PubSubClient client(MQTT_SERVER, MQTT_PORT, mqtt_callback, wifiClient);
+
+WiFiMulti wifiMulti;
 
 GxIO_Class io(SPI, ELINK_SS, ELINK_DC, ELINK_RESET);
 GxEPD_Class display(io, ELINK_RESET, ELINK_BUSY);
@@ -157,7 +151,7 @@ Button2 *pBtns = nullptr;
 uint8_t g_btns[] = BUTTONS_MAP;
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600 * 8;
+const long  gmtOffset_sec = 3600 * TIMEZONE;
 const int   daylightOffset_sec = 0;
 
 hw_timer_t * timer = NULL;
@@ -433,13 +427,19 @@ void WebServerStart(void)
   }
 #else
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+  //  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
+  wifiMulti.addAP(WIFI_SSID2, WIFI_PASSWORD2);
+  wifiMulti.addAP(WIFI_SSID3, WIFI_PASSWORD3);
+  int tryTime = 0;
+  while (wifiMulti.run() != WL_CONNECTED) {
     //while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
-    esp_restart();
+    tryTime++;
+    if (tryTime > 10) {
+      esp_restart();
+    }
   }
   Serial.println(F("WiFi connected"));
   Serial.println("");
@@ -704,12 +704,7 @@ void LCD_one(int num, int loc) {
   display.drawBitmap(119 + x, 70, LCD_h, 22, 5, show_7); //数码管
 }
 
-void LCD_print() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    Serial.println("Failed to obtain time");
-    return;
-  }
+void LCD_print(struct tm timeinfo) {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   int hour_h, hour_l, min_h, min_l;
   hour_l = timeinfo.tm_hour % 10;
@@ -722,19 +717,16 @@ void LCD_print() {
   LCD_one(min_l, 4);
   display.drawBitmap(183, 31, LCD_d, 5, 5, GxEPD_BLACK); //数码管
   display.drawBitmap(183, 55, LCD_d, 5, 5, GxEPD_BLACK); //数码管
-  if ((int)timeinfo.tm_hour == SLEEPTIME) {
-    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-    Serial.println("Going to sleep now");
-    Serial.flush();
-    //Wire.end();
-    display.powerDown();
-    esp_deep_sleep_start();
-  }
 }
 
 void firstPage() {
   display.fillRect(99, 0, 172, 128, GxEPD_WHITE);
-  LCD_print();
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  LCD_print(timeinfo);
   u8g2_for_adafruit_gfx.setFont(u8g2_font_wqy14_t_gb2312);
   u8g2_for_adafruit_gfx.setFontDirection(0);
   u8g2_for_adafruit_gfx.setFontMode(1);
@@ -899,7 +891,7 @@ void flashBme() {
   display.fillRect(51, 22, 49, 20, GxEPD_WHITE);
   display.fillRect(51, 44, 49, 19, GxEPD_WHITE);
   display.updateWindow(0, 0, 100, 64);
-  showBattary();
+  //showBattary();
 }
 
 void flashWeather() {
@@ -1207,14 +1199,14 @@ void reconnect() {
 
 void setTime() {
   struct tm timeinfo;
-  static int time_failed=0;
+  static int time_failed = 0;
   while (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     delay(200);
     time_failed++;
-    if(time_failed>10){
-        esp_restart();
+    if (time_failed > 10) {
+      esp_restart();
     }
   }
 
@@ -1266,8 +1258,21 @@ void IRAM_ATTR onTimer2() {
 }
 
 void timerRec() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  if ((int)timeinfo.tm_hour == SLEEPTIME_h && (int)timeinfo.tm_min == SLEEPTIME_m) {
+    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    Serial.println("Going to sleep now");
+    Serial.flush();
+    //Wire.end();
+    display.powerDown();
+    esp_deep_sleep_start();
+  }
   if (page_state == 1) {
-    LCD_print();
+    LCD_print(timeinfo);
     display.updateWindow(114, 16, 141, 59, true);
   }
 }
@@ -1348,19 +1353,19 @@ void showVoltage()
     float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
     String voltage = "Voltage :" + String(battery_voltage) + "V";
     Serial.println(voltage);
-      if(battery_voltage<3.2){
-          display.fillScreen(GxEPD_WHITE);
-          display.update();
-          display.drawBitmap(100, 18, battery2, 100, 100, GxEPD_BLACK);
-          display.drawBitmap(20, 88, usb, 40, 40, GxEPD_BLACK);
-          display.update();
-          delay(1000);
-          Serial.println("Going to sleep now");
-          Serial.flush();
-          //Wire.end();
-          display.powerDown();
-          esp_deep_sleep_start();
-      }
+    if (battery_voltage < 3.2) {
+      display.fillScreen(GxEPD_WHITE);
+      display.update();
+      display.drawBitmap(100, 18, battery2, 100, 100, GxEPD_BLACK);
+      display.drawBitmap(20, 88, usb, 40, 40, GxEPD_BLACK);
+      display.update();
+      delay(1000);
+      Serial.println("Going to sleep now");
+      Serial.flush();
+      //Wire.end();
+      display.powerDown();
+      esp_deep_sleep_start();
+    }
     Battary_level = map(battery_voltage * 100, 330, 420, 0, 33);
     //showBattary();
     Serial.print("map:");
@@ -1529,8 +1534,8 @@ void setup()
       u8g2_for_adafruit_gfx.print("Please restart the system.");
       display.drawBitmap(13, 38, oops, 50, 50, GxEPD_BLACK);
 
-//display.drawBitmap(100, 18, battery2, 100, 100, GxEPD_BLACK);
-//        display.drawBitmap(20, 88, usb, 40, 40, GxEPD_BLACK);
+      //display.drawBitmap(100, 18, battery2, 100, 100, GxEPD_BLACK);
+      //        display.drawBitmap(20, 88, usb, 40, 40, GxEPD_BLACK);
 
 
       display.update();
