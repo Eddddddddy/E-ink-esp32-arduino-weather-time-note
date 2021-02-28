@@ -86,17 +86,21 @@ video introduction(https://www.bilibili.com/video/BV1pt4y1y7ya)
 
 ## 服务器：
 
-1.准备服务器，Windows服务器。
+1.准备服务器，Linux Centos7服务器。其他系统大同小异，可自行研究。
 
-2.在Windows服务器上配置好MQTT服务端
+2.在Linux服务器上配置好MQTT服务端，可参照[EMQ官方网站](https://www.emqx.cn/downloads#broker)。有docker使用经验的开发人员推荐使用docker进行部署，更方便管理。
 
-3.安装酷Q程序，建议参照[其他教程](https://www.bilibili.com/video/BV13E4113777/)IMPORTANT! 酷Q貌似凉了，还没寻找合适的QQ消息解析服务，请把侧重放到HTTP API
+3.安装[OPQBot](https://github.com/OPQBOT/OPQ/wiki/安装指南)。
 
-4.在酷Q中安装好http api[插件](https://cqp.cc/t/30748)
+4.为Server的Python脚本安装依赖包。Python版本3.6.8。可通过requirements安装。
 
-5.更改本项目中server的python程序
+5.更改config.py中相关的内容。
 
-6.给服务器安装python环境及其所需的python包
+6.修改Eink.service中的“/root/Eink/Eink.py"的实际路径。
+
+7.将Eink.service放入"/usr/lib/systemd/system/"
+
+8.输入'sudo systemctl start Eink.service'以启动程序，之后输入'sudo systemctl enable Eink.service'启用开机自动启动。
 
 
 
@@ -119,11 +123,9 @@ video introduction(https://www.bilibili.com/video/BV1pt4y1y7ya)
 - [Adafruit_Sensor](https://github.com/adafruit/Adafruit_Sensor)
 - [Adafruit_BME680](https://github.com/adafruit/Adafruit_BME680)
 
-4.安装arduino工具（Use Arduino ESP32 Sketch data Upload files,if you not install,[download ESP32FS-vX.zip](https://github.com/me-no-dev/arduino-esp32fs-plugin/releases),Extract to <C:\Users\Your User Name\Documents\Arduino\tools>,Open Ardunio IDE,  Tools -> ESP32 Sketch data Upload -> Upload）
+4.在Arduino工具的Partition Scheme中选择Huge App.
 
-5.使用第四步中安装的工具给开发板上传文件系统
-
-6.上传程序（编译较慢，我的电脑不使用预编译文件的情况下需要2分55秒编译一次。请在issue中留下你需要多长时间）
+5.上传程序（编译较慢，我的电脑不使用预编译文件的情况下需要2分55秒编译一次。请在issue中留下你需要多长时间）
 
 
 
