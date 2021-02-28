@@ -1,0 +1,7 @@
+requests==2.25.1
+jsonpath==0.82
+uvicorn==0.13.3
+fastapi==0.63.0
+gevent_socketio==0.3.6
+paho_mqtt==1.5.1
+websocket_client==0.57.0
