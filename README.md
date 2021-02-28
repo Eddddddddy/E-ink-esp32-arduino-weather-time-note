@@ -125,7 +125,9 @@ video introduction(https://www.bilibili.com/video/BV1pt4y1y7ya)
 
 4.在Arduino工具的Partition Scheme中选择Huge App.
 
-5.上传程序（编译较慢，我的电脑不使用预编译文件的情况下需要2分55秒编译一次。请在issue中留下你需要多长时间）
+5.更改config.h中相关的内容。
+
+6.上传程序（编译较慢，我的电脑不使用预编译文件的情况下需要2分55秒编译一次。请在issue中留下你需要多长时间）
 
 
 
